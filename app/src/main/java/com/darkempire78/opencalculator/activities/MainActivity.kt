@@ -77,6 +77,9 @@ class MainActivity : AppCompatActivity() {
     private var errorStatusOld = false
 
     private var isStillTheSameCalculation_autoSaveCalculationWithoutEqualOption = false
+
+    private var inGalleryAccessMode = false
+    private var galleryPin = ""
     private var lastHistoryElementId = ""
 
     private var calculationResult = BigDecimal.ZERO
@@ -318,6 +321,12 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Create default gallery
+        val galleryManager = com.darkempire78.opencalculator.gallery.GalleryManager(this)
+        val defaultGallery = File(filesDir, "galleries/default")
+        if (!defaultGallery.exists()) {
+            galleryManager.createGallery("default", "1111")
+        }
     }
 
     // Displays a popup menu with options to insert double zeros ("00") or triple zeros ("000") into the specified EditText when the zero button is long-pressed.
@@ -721,7 +730,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun keyDigitPadMappingToDisplay(view: View) {
-        updateDisplay(view, (view as Button).text as String)
+        if (inGalleryAccessMode) {
+            galleryPin += (view as Button).text
+            updateDisplay(view, (view as Button).text as String)
+        } else {
+            updateDisplay(view, (view as Button).text as String)
+        }
     }
 
     @SuppressLint("SetTextI18n")
@@ -812,7 +826,12 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun multiplyButton(view: View) {
-        addSymbol(view, "×")
+        if (binding.input.text.isEmpty()) {
+            inGalleryAccessMode = true
+            binding.input.setText("×")
+        } else {
+            addSymbol(view, "×")
+        }
     }
 
     fun exponentButton(view: View) {
@@ -908,8 +927,56 @@ class MainActivity : AppCompatActivity() {
         updateDisplay(view, "π")
     }
 
+    private var failedLoginAttempts = 0
+    private var cooldownUntil: Long = 0
+
     fun factorialButton(view: View) {
-        addSymbol(view, "!")
+        if (inGalleryAccessMode) {
+            if (System.currentTimeMillis() < cooldownUntil) {
+                // In cooldown, do nothing
+                return
+            }
+
+            // Check pin
+            val galleryManager = com.darkempire78.opencalculator.gallery.GalleryManager(this)
+            try {
+                val galleries = File(filesDir, "galleries").listFiles()
+                var galleryFound = false
+                galleries?.forEach {
+                    try {
+                        val gallery = galleryManager.getGallery(it.name, galleryPin)
+                        // Pin is correct, open gallery
+                        val intent = Intent(this, GalleryActivity::class.java)
+                        intent.putExtra("galleryName", gallery.name)
+                        intent.putExtra("galleryPin", galleryPin)
+                        startActivity(intent)
+                        galleryFound = true
+                        return@forEach
+                    } catch (e: Exception) {
+                        // Wrong pin
+                    }
+                }
+
+                if (!galleryFound) {
+                    // Wrong pin
+                    failedLoginAttempts++
+                    if (failedLoginAttempts >= 3) {
+                        cooldownUntil = System.currentTimeMillis() + 3 * 60 * 1000 // 3 minutes
+                        failedLoginAttempts = 0
+                    }
+                    Toast.makeText(this, "Wrong pin", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                // Error reading galleries
+                Toast.makeText(this, "Error accessing galleries", Toast.LENGTH_SHORT).show()
+            } finally {
+                inGalleryAccessMode = false
+                galleryPin = ""
+                binding.input.setText("")
+            }
+        } else {
+            addSymbol(view, "!")
+        }
     }
 
     fun squareButton(view: View) {

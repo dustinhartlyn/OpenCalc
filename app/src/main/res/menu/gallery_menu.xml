@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <group android:checkableBehavior="single">
+        <item
+            android:id="@+id/nav_add_pictures"
+            android:title="Add Pictures" />
+        <item
+            android:id="@+id/nav_export_gallery"
+            android:title="Export Gallery" />
+        <item
+            android:id="@+id/nav_delete_gallery"
+            android:title="Delete Gallery" />
+        <item
+            android:id="@+id/nav_create_new_gallery"
+            android:title="Create New Gallery" />
+        <item android:title="Sort">
+            <menu>
+                <item
+                    android:id="@+id/nav_sort_name"
+                    android:title="Name" />
+                <item
+                    android:id="@+id/nav_sort_date"
+                    android:title="Date" />
+                <item
+                    android:id="@+id/nav_sort_custom"
+                    android:title="Custom" />
+            </menu>
+        </item>
+    </group>
+</menu>
