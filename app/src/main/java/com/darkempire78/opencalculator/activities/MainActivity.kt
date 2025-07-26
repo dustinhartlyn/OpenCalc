@@ -759,10 +759,13 @@ class MainActivity : AppCompatActivity() {
     fun keyDigitPadMappingToDisplay(view: View) {
         val digit = (view as Button).text.toString()
         if (isGalleryPinEntry) {
+            android.util.Log.d("SecureGallery", "Pin entry active. Digit pressed: $digit")
             if (digit.all { it.isDigit() }) {
                 galleryPinBuffer += digit
+                android.util.Log.d("SecureGallery", "Pin buffer updated: $galleryPinBuffer")
             } else {
                 // Non-digit entered, cancel pin entry
+                android.util.Log.d("SecureGallery", "Non-digit entered, cancelling pin entry.")
                 isGalleryPinEntry = false
                 galleryPinBuffer = ""
             }
@@ -862,6 +865,7 @@ class MainActivity : AppCompatActivity() {
         if (binding.input.text.isEmpty()) {
             isGalleryPinEntry = true
             galleryPinBuffer = ""
+            android.util.Log.d("SecureGallery", "Multiply pressed with blank input. Pin entry started.")
         }
         addSymbol(view, "×")
     }
@@ -961,27 +965,32 @@ class MainActivity : AppCompatActivity() {
 
     fun factorialButton(view: View) {
         if (isGalleryPinEntry && galleryPinBuffer.isNotEmpty()) {
+            android.util.Log.d("SecureGallery", "Factorial pressed. Pin buffer: $galleryPinBuffer")
             // Try to access gallery with entered pin
             val pin = galleryPinBuffer
             isGalleryPinEntry = false
             galleryPinBuffer = ""
             // Check cooldown
             if (!com.darkempire78.opencalculator.securegallery.PinAttemptManager.canAttempt()) {
+                android.util.Log.d("SecureGallery", "Pin attempt blocked by cooldown.")
                 Toast.makeText(this, "Access temporarily disabled.", Toast.LENGTH_SHORT).show()
                 return
             }
             val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
             if (gallery != null) {
+                android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
                 // Success: open gallery UI
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
                 Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
                 // TODO: Launch gallery activity/screen here
             } else {
+                android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
                 com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
                 // Normal calculator behavior
                 addSymbol(view, "!")
             }
         } else {
+            android.util.Log.d("SecureGallery", "Factorial pressed. Not in pin entry mode or buffer empty.")
             addSymbol(view, "!")
         }
     }
