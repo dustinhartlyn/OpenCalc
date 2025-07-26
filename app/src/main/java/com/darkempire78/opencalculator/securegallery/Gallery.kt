@@ -5,7 +5,7 @@ import java.util.UUID
 // Data model for a secure gallery
 class Gallery(
     val id: UUID = UUID.randomUUID(),
-    val name: String,
+    var name: String,
     val salt: ByteArray,
     val notes: MutableList<SecureNote> = mutableListOf(),
     val photos: MutableList<SecurePhoto> = mutableListOf()

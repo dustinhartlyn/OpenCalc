@@ -33,9 +33,9 @@ object GalleryManager {
         return true
     }
 
-    // Rename an existing gallery
-    fun renameGallery(oldName: String, newName: String): Boolean {
-        val gallery = getGalleries().find { it.name == oldName }
+    // Rename an existing gallery by UUID
+    fun renameGallery(galleryId: UUID, newName: String): Boolean {
+        val gallery = getGalleries().find { it.id == galleryId }
         if (gallery == null) {
             android.util.Log.d("SecureGallery", "Rename failed: gallery not found.")
             return false
@@ -45,19 +45,19 @@ object GalleryManager {
             return false
         }
         gallery.name = newName
-        android.util.Log.d("SecureGallery", "Gallery renamed from $oldName to $newName")
+        android.util.Log.d("SecureGallery", "Gallery renamed to $newName")
         return true
     }
 
-    // Delete a gallery by name
-    fun deleteGallery(name: String): Boolean {
-        val gallery = getGalleries().find { it.name == name }
+    // Delete a gallery by UUID
+    fun deleteGallery(galleryId: UUID): Boolean {
+        val gallery = getGalleries().find { it.id == galleryId }
         if (gallery == null) {
             android.util.Log.d("SecureGallery", "Delete failed: gallery not found.")
             return false
         }
         galleries.remove(gallery)
-        android.util.Log.d("SecureGallery", "Gallery deleted: $name")
+        android.util.Log.d("SecureGallery", "Gallery deleted: ${gallery.name}")
         return true
     }
     private val galleries = mutableListOf<Gallery>()

@@ -97,64 +97,17 @@ class MainActivity : AppCompatActivity() {
 
 
     // --- Secure Gallery Management ---
-    // Create a new gallery with a pin and name
+    // Delegate gallery management to GalleryManager
     private fun createGallery(pin: String, name: String): Boolean {
-        // Check if gallery with this name already exists
-        if (com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().any { it.name == name }) {
-            android.util.Log.d("SecureGallery", "Gallery creation failed: name already exists.")
-            return false
-        }
-        val salt = com.darkempire78.opencalculator.securegallery.CryptoUtils.generateSalt()
-        val key = com.darkempire78.opencalculator.securegallery.CryptoUtils.deriveKey(pin, salt)
-        // Create a welcome note
-        val titlePlain = "Welcome"
-        val bodyPlain = "Your new gallery is ready."
-        val encryptedTitlePair = com.darkempire78.opencalculator.securegallery.CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
-        val encryptedBodyPair = com.darkempire78.opencalculator.securegallery.CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
-        val encryptedTitle = encryptedTitlePair.first + encryptedTitlePair.second
-        val encryptedBody = encryptedBodyPair.first + encryptedBodyPair.second
-        val welcomeNote = com.darkempire78.opencalculator.securegallery.SecureNote(
-            encryptedTitle = encryptedTitle,
-            encryptedBody = encryptedBody,
-            date = System.currentTimeMillis()
-        )
-        val newGallery = com.darkempire78.opencalculator.securegallery.Gallery(
-            name = name,
-            salt = salt,
-            notes = mutableListOf(welcomeNote),
-            photos = mutableListOf()
-        )
-        com.darkempire78.opencalculator.securegallery.GalleryManager.addGallery(newGallery)
-        android.util.Log.d("SecureGallery", "Gallery created: $name with pin $pin")
-        return true
+        return com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name)
     }
 
-    // Rename an existing gallery
-    private fun renameGallery(oldName: String, newName: String): Boolean {
-        val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().find { it.name == oldName }
-        if (gallery == null) {
-            android.util.Log.d("SecureGallery", "Rename failed: gallery not found.")
-            return false
-        }
-        if (com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().any { it.name == newName }) {
-            android.util.Log.d("SecureGallery", "Rename failed: new name already exists.")
-            return false
-        }
-        gallery.name = newName
-        android.util.Log.d("SecureGallery", "Gallery renamed from $oldName to $newName")
-        return true
+    private fun renameGallery(galleryId: java.util.UUID, newName: String): Boolean {
+        return com.darkempire78.opencalculator.securegallery.GalleryManager.renameGallery(galleryId, newName)
     }
 
-    // Delete a gallery by name
-    private fun deleteGallery(name: String): Boolean {
-        val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().find { it.name == name }
-        if (gallery == null) {
-            android.util.Log.d("SecureGallery", "Delete failed: gallery not found.")
-            return false
-        }
-        com.darkempire78.opencalculator.securegallery.GalleryManager.removeGallery(gallery)
-        android.util.Log.d("SecureGallery", "Gallery deleted: $name")
-        return true
+    private fun deleteGallery(galleryId: java.util.UUID): Boolean {
+        return com.darkempire78.opencalculator.securegallery.GalleryManager.deleteGallery(galleryId)
     }
 
 
