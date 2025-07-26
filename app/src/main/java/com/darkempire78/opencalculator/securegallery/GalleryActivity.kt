@@ -61,6 +61,11 @@ class GalleryActivity : AppCompatActivity() {
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
         setSupportActionBar(toolbar)
         toolbar.inflateMenu(R.menu.gallery_menu)
+        toolbar.setNavigationIcon(R.drawable.ic_menu) // Add a hamburger icon (ensure ic_menu exists)
+        toolbar.setNavigationOnClickListener {
+            // Optionally open a drawer or show a toast
+            Toast.makeText(this, "Menu", Toast.LENGTH_SHORT).show()
+        }
         toolbar.setOnMenuItemClickListener { menuItem ->
             when (menuItem.itemId) {
                 R.id.action_create_gallery -> {
