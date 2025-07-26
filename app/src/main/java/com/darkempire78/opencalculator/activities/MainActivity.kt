@@ -106,11 +106,17 @@ class MainActivity : AppCompatActivity() {
                 val key = CryptoUtils.deriveKey(defaultPin, salt)
                 // Encrypt a test note using the derived key
                 val testNotePlain = "Test note for pin unlock"
-                val testNoteEncrypted = CryptoUtils.encrypt(testNotePlain, key)
+                val testNoteBytes = testNotePlain.toByteArray(Charsets.UTF_8)
+                val testNoteEncrypted = CryptoUtils.encrypt(testNoteBytes, key)
+                val testNote = com.darkempire78.opencalculator.securegallery.SecureNote(
+                    encryptedContent = testNoteEncrypted,
+                    title = "Welcome",
+                    timestamp = System.currentTimeMillis()
+                )
                 val newGallery = Gallery(
                     name = "Default Gallery",
                     salt = salt,
-                    notes = mutableListOf(testNoteEncrypted),
+                    notes = mutableListOf(testNote),
                     photos = mutableListOf()
                 )
                 GalleryManager.addGallery(newGallery)
