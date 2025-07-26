@@ -64,6 +64,10 @@ var currentTheme: Int = 0
 class MainActivity : AppCompatActivity() {
     private lateinit var view: View
 
+    // --- Secure Gallery Integration State ---
+    private var isGalleryPinEntry = false
+    private var galleryPinBuffer = ""
+
     private val decimalSeparatorSymbol =
         DecimalFormatSymbols.getInstance().decimalSeparator.toString()
     private val groupingSeparatorSymbol =
@@ -721,7 +725,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun keyDigitPadMappingToDisplay(view: View) {
-        updateDisplay(view, (view as Button).text as String)
+        val digit = (view as Button).text.toString()
+        if (isGalleryPinEntry) {
+            if (digit.all { it.isDigit() }) {
+                galleryPinBuffer += digit
+            } else {
+                // Non-digit entered, cancel pin entry
+                isGalleryPinEntry = false
+                galleryPinBuffer = ""
+            }
+        }
+        updateDisplay(view, digit)
     }
 
     @SuppressLint("SetTextI18n")
@@ -812,6 +826,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun multiplyButton(view: View) {
+        // If input is blank, start gallery pin entry
+        if (binding.input.text.isEmpty()) {
+            isGalleryPinEntry = true
+            galleryPinBuffer = ""
+        }
         addSymbol(view, "×")
     }
 
@@ -909,7 +928,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun factorialButton(view: View) {
-        addSymbol(view, "!")
+        if (isGalleryPinEntry && galleryPinBuffer.isNotEmpty()) {
+            // Try to access gallery with entered pin
+            val pin = galleryPinBuffer
+            isGalleryPinEntry = false
+            galleryPinBuffer = ""
+            // Check cooldown
+            if (!com.darkempire78.opencalculator.securegallery.PinAttemptManager.canAttempt()) {
+                Toast.makeText(this, "Access temporarily disabled.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
+            if (gallery != null) {
+                // Success: open gallery UI
+                com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
+                Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
+                // TODO: Launch gallery activity/screen here
+            } else {
+                com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
+                // Normal calculator behavior
+                addSymbol(view, "!")
+            }
+        } else {
+            addSymbol(view, "!")
+        }
     }
 
     fun squareButton(view: View) {
