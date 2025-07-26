@@ -113,7 +113,8 @@ class GalleryActivity : AppCompatActivity() {
             .setView(nameInput)
             .setPositiveButton("Rename") { _, _ ->
                 val newName = nameInput.text.toString()
-                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.renameGallery(oldName, newName)
+                val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().find { it.name == oldName }
+                val result = if (gallery != null) com.darkempire78.opencalculator.securegallery.GalleryManager.renameGallery(gallery.id, newName) else false
                 android.util.Log.d("SecureGallery", "RenameGalleryDialog: oldName=$oldName newName=$newName result=$result")
                 Toast.makeText(this, if (result) "Gallery renamed" else "Failed to rename gallery", Toast.LENGTH_SHORT).show()
             }
@@ -127,7 +128,8 @@ class GalleryActivity : AppCompatActivity() {
             .setTitle("Delete Gallery")
             .setMessage("Are you sure you want to delete $name?")
             .setPositiveButton("Delete") { _, _ ->
-                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.deleteGallery(name)
+                val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().find { it.name == name }
+                val result = if (gallery != null) com.darkempire78.opencalculator.securegallery.GalleryManager.deleteGallery(gallery.id) else false
                 android.util.Log.d("SecureGallery", "DeleteGalleryDialog: name=$name result=$result")
                 Toast.makeText(this, if (result) "Gallery deleted" else "Failed to delete gallery", Toast.LENGTH_SHORT).show()
             }
