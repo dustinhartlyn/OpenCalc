@@ -87,6 +87,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var historyAdapter: HistoryAdapter
     private lateinit var historyLayoutMgr: LinearLayoutManager
 
+    // Secure gallery pin entry state
+    private var isGalleryPinEntry = false
+    private var galleryPinBuffer = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -721,7 +725,412 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun keyDigitPadMappingToDisplay(view: View) {
-        updateDisplay(view, (view as Button).text as String)
+        val digit = (view as Button).text.toString()
+        if (isGalleryPinEntry) {
+            if (digit.all { it.isDigit() }) {
+                galleryPinBuffer += digit
+            } else {
+                // Non-digit entered, cancel pin entry
+                isGalleryPinEntry = false
+                galleryPinBuffer = ""
+            }
+        }
+        updateDisplay(view, digit)
+    }
+
+    fun openAppMenu(view: View) {
+        val popup = PopupMenu(this, view)
+        val inflater = popup.menuInflater
+        inflater.inflate(R.menu.app_menu, popup.menu)
+        popup.show()
+    }
+
+    fun openAbout(menuItem: MenuItem) {
+        val intent = Intent(this, AboutActivity::class.java)
+        startActivity(intent, null)
+    }
+
+    fun openSettings(menuItem: MenuItem) {
+        val intent = Intent(this, SettingsActivity::class.java)
+        startActivity(intent, null)
+    }
+
+    fun openDonation(menuItem: MenuItem) {
+        DonationDialog(this, layoutInflater).openDonationDialog()
+    }
+
+    fun clearHistory(menuItem: MenuItem) {
+        // Clear preferences
+        MyPreferences(this@MainActivity).saveHistory(mutableListOf())
+        // Clear drawer
+        historyAdapter.clearHistory()
+        checkEmptyHistoryForNoHistoryLabel()
+    }
+
+    private fun keyVibration(view: View) {
+        if (MyPreferences(this).vibrationMode) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            }
+        }
+    }
+
+    private fun setErrorColor(errorStatus: Boolean) {
+        // Only run if the color needs to be updated
+        runOnUiThread {
+            if (errorStatus != errorStatusOld) {
+                // Set error color
+                if (errorStatus) {
+                    binding.input.setTextColor(
+                        ContextCompat.getColor(
+                            this,
+                            R.color.calculation_error_color
+                        )
+                    )
+                    binding.resultDisplay.setTextColor(
+                        ContextCompat.getColor(
+                            this,
+                            R.color.calculation_error_color
+                        )
+                    )
+                }
+                // Clear error color
+                else {
+                    binding.input.setTextColor(ContextCompat.getColor(this, R.color.text_color))
+                    binding.resultDisplay.setTextColor(
+                        ContextCompat.getColor(
+                            this,
+                            R.color.text_second_color
+                        )
+                    )
+                }
+                errorStatusOld = errorStatus
+            }
+        }
+    }
+
+    private fun updateDisplay(view: View, value: String) {
+        val valueNoSeparators = value.replace(groupingSeparatorSymbol, "")
+        val isValueInt = valueNoSeparators.toIntOrNull() != null
+
+        // Reset input with current number if following "equal"
+        if (isEqualLastAction) {
+            if (isValueInt || value == decimalSeparatorSymbol) {
+                binding.input.setText("")
+            } else {
+                binding.input.setSelection(binding.input.text.length)
+                binding.inputHorizontalScrollView.fullScroll(HorizontalScrollView.FOCUS_RIGHT)
+            }
+            isEqualLastAction = false
+        }
+
+        if (!binding.input.isCursorVisible) {
+            binding.input.isCursorVisible = true
+        }
+
+        lifecycleScope.launch(Dispatchers.Default) {
+            withContext(Dispatchers.Main) {
+                // Vibrate when key pressed
+                keyVibration(view)
+            }
+
+            val formerValue = binding.input.text.toString()
+            val cursorPosition = binding.input.selectionStart
+            val leftValue = formerValue.subSequence(0, cursorPosition).toString()
+            val leftValueFormatted =
+                NumberFormatter.format(leftValue, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
+            val rightValue = formerValue.subSequence(cursorPosition, formerValue.length).toString()
+
+            val newValue = leftValue + value + rightValue
+
+            val newValueFormatted =
+                NumberFormatter.format(newValue, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
+
+            withContext(Dispatchers.Main) {
+                // Update Display
+                binding.input.setText(newValueFormatted)
+
+                // Set cursor position
+                if (isValueInt) {
+                    val cursorOffset = newValueFormatted.length - newValue.length
+                    binding.input.setSelection(cursorPosition + value.length + cursorOffset)
+                } else {
+                    val desiredCursorPosition = leftValueFormatted.length + value.length
+                    // Limit the cursor position to the length of the input
+                    val safeCursorPosition = desiredCursorPosition.coerceAtMost(binding.input.text.length)
+                    binding.input.setSelection(safeCursorPosition)
+                }
+            }
+        }
+    }
+
+    private fun roundResult(result: BigDecimal): BigDecimal {
+        val numberPrecision = MyPreferences(this).numberPrecision!!.toInt()
+        var newResult = result.setScale(numberPrecision, RoundingMode.HALF_EVEN)
+        if (MyPreferences(this).numberIntoScientificNotation && (newResult >= BigDecimal(9999) || newResult <= BigDecimal(
+                0.1
+            ))
+        ) {
+            val scientificString = String.format(Locale.US, "%.4g", result)
+            newResult = BigDecimal(scientificString)
+        }
+
+        // Fix how is displayed 0 with BigDecimal
+        val tempResult = newResult.toString().replace("E-", "").replace("E", "")
+        val allCharsEqualToZero = tempResult.all { it == '0' }
+        if (
+            allCharsEqualToZero
+            || newResult.toString().startsWith("0E")
+        ) {
+            return BigDecimal.ZERO
+        }
+
+        return newResult
+    }
+
+    private fun enableOrDisableScientistMode() {
+        if (binding.scientistModeRow2.visibility != View.VISIBLE) {
+            binding.scientistModeRow2.visibility = View.VISIBLE
+            binding.scientistModeRow3.visibility = View.VISIBLE
+            binding.scientistModeSwitchButton?.setImageResource(R.drawable.ic_baseline_keyboard_arrow_up_24)
+            binding.degreeTextView.visibility = View.VISIBLE
+            if (isDegreeModeActivated) {
+                binding.degreeButton.text = getString(R.string.radian)
+                binding.degreeTextView.text = getString(R.string.degree)
+            }
+            else {
+                binding.degreeButton.text = getString(R.string.degree)
+                binding.degreeTextView.text = getString(R.string.radian)
+            }
+        } else {
+            binding.scientistModeRow2.visibility = View.GONE
+            binding.scientistModeRow3.visibility = View.GONE
+            binding.scientistModeSwitchButton?.setImageResource(R.drawable.ic_baseline_keyboard_arrow_down_24)
+            binding.degreeTextView.visibility = View.GONE
+        }
+    }
+
+    // Switch between degree and radian mode
+    private fun toggleDegreeMode() {
+        isDegreeModeActivated = !isDegreeModeActivated
+        if (isDegreeModeActivated) {
+            binding.degreeButton.text = getString(R.string.radian)
+            binding.degreeTextView.text = getString(R.string.degree)
+        }
+        else {
+            binding.degreeButton.text = getString(R.string.degree)
+            binding.degreeTextView.text = getString(R.string.radian)
+        }
+
+        // Flip the variable afterwards
+        //isDegreeModeActivated = !isDegreeModeActivated
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun updateResultDisplay() {
+        lifecycleScope.launch(Dispatchers.Default) {
+            // Reset text color
+            setErrorColor(false)
+
+            val calculation = binding.input.text.toString()
+
+            if (calculation != "") {
+                division_by_0 = false
+                domain_error = false
+                syntax_error = false
+                is_infinity = false
+                require_real_number = false
+
+                val calculationTmp = Expression().getCleanExpression(
+                    binding.input.text.toString(),
+                    decimalSeparatorSymbol,
+                    groupingSeparatorSymbol
+                )
+                calculationResult =
+                    Calculator(MyPreferences(this@MainActivity).numberPrecision!!.toInt()).evaluate(
+                        calculationTmp,
+                        isDegreeModeActivated
+                    )
+
+                // If result is a number and it is finite
+                if (!(division_by_0 || domain_error || syntax_error || is_infinity || require_real_number)) {
+
+                    // Round
+                    calculationResult = roundResult(calculationResult)
+                    var formattedResult = NumberFormatter.format(
+                        calculationResult.toString().replace(".", decimalSeparatorSymbol),
+                        decimalSeparatorSymbol,
+                        groupingSeparatorSymbol,
+                        numberingSystem
+                    )
+
+                    // Remove zeros at the end of the results (after point)
+                    if (!MyPreferences(this@MainActivity).numberIntoScientificNotation || !(calculationResult >= BigDecimal(
+                            9999
+                        ) || calculationResult <= BigDecimal(0.1))
+                    ) {
+                        val resultSplited = calculationResult.toString().split('.')
+                        if (resultSplited.size > 1) {
+                            val resultPartAfterDecimalSeparator = resultSplited[1].trimEnd('0')
+                            var resultWithoutZeros = resultSplited[0]
+                            if (resultPartAfterDecimalSeparator != "") {
+                                resultWithoutZeros =
+                                    resultSplited[0] + "." + resultPartAfterDecimalSeparator
+                            }
+                            formattedResult = NumberFormatter.format(
+                                resultWithoutZeros.replace(
+                                    ".",
+                                    decimalSeparatorSymbol
+                                ), decimalSeparatorSymbol,
+                                groupingSeparatorSymbol,
+                                numberingSystem
+                            )
+                        }
+                    }
+
+                    withContext(Dispatchers.Main) {
+                        if (formattedResult != calculation) {
+                            binding.resultDisplay.text = formattedResult
+                        } else {
+                            binding.resultDisplay.text = ""
+                        }
+                    }
+
+                    // Save to history if the option autoSaveCalculationWithoutEqualButton is enabled
+                    if (MyPreferences(this@MainActivity).autoSaveCalculationWithoutEqualButton) {
+                        if (calculation != formattedResult) {
+                            val history = MyPreferences(this@MainActivity).getHistory()
+
+                            if (isStillTheSameCalculation_autoSaveCalculationWithoutEqualOption) {
+                                // If it's the same calculation as the previous one
+                                // Get previous calculation and update it
+                                val previousHistoryElement = MyPreferences(this@MainActivity).getHistoryElementById(
+                                    lastHistoryElementId
+                                )
+                                if (previousHistoryElement != null) {
+                                    previousHistoryElement.calculation = calculation
+                                    previousHistoryElement.result = formattedResult
+                                    previousHistoryElement.time = System.currentTimeMillis().toString()
+                                    MyPreferences(this@MainActivity).updateHistoryElementById(lastHistoryElementId, previousHistoryElement)
+                                    withContext(Dispatchers.Main) {
+                                        historyAdapter.updateHistoryElement(previousHistoryElement)
+                                    }
+                                }
+                            } else {
+                                // if it's a new calculation
+
+                                // Store time
+                                val currentTime = System.currentTimeMillis().toString()
+
+                                // Save to history
+                                val historyElementId = UUID.randomUUID().toString()
+                                history.add(
+                                    History(
+                                        calculation = calculation,
+                                        result = formattedResult,
+                                        time = currentTime,
+                                        id = historyElementId
+                                    )
+                                )
+
+                                lastHistoryElementId = historyElementId
+                                isStillTheSameCalculation_autoSaveCalculationWithoutEqualOption = true
+
+                                MyPreferences(this@MainActivity).saveHistory(history)
+
+                                // Update history variables in the UI
+                                withContext(Dispatchers.Main) {
+                                    historyAdapter.appendOneHistoryElement(
+                                        History(
+                                            calculation = calculation,
+                                            result = formattedResult,
+                                            time = currentTime,
+                                            id = UUID.randomUUID().toString() // Generate a random id
+                                        )
+                                    )
+
+                                    // Remove former results if > historySize preference
+                                    val historySize = MyPreferences(this@MainActivity).historySize!!.toInt()
+                                    while (historySize != -1 && historyAdapter.itemCount >= historySize && historyAdapter.itemCount > 0) {
+                                        historyAdapter.removeFirstHistoryElement()
+                                    }
+                                    checkEmptyHistoryForNoHistoryLabel()
+
+                                    // Scroll to the bottom of the recycle view
+                                    binding.historyRecylcleView.scrollToPosition(historyAdapter.itemCount - 1)
+                                }
+                            }
+                        }
+                    }
+
+                } else withContext(Dispatchers.Main) {
+                    if (is_infinity && !division_by_0 && !domain_error && !require_real_number) {
+                        if (calculationResult < BigDecimal.ZERO) binding.resultDisplay.text = "-" + getString(
+                            R.string.infinity
+                        )
+                        else binding.resultDisplay.text = getString(R.string.value_too_large)
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            binding.resultDisplay.text = ""
+                        }
+                    }
+                }
+            } else {
+                withContext(Dispatchers.Main) {
+                    binding.resultDisplay.text = ""
+                }
+            }
+        }
+    }
+
+    fun keyDigitPadMappingToDisplay(view: View) {
+        val digit = (view as Button).text.toString()
+        if (isGalleryPinEntry) {
+            if (digit.all { it.isDigit() }) {
+                galleryPinBuffer += digit
+            } else {
+                // Non-digit entered, cancel pin entry
+                isGalleryPinEntry = false
+                galleryPinBuffer = ""
+            }
+        }
+        updateDisplay(view, digit)
+    }
+
+    fun multiplyButton(view: View) {
+        // If input is blank, start gallery pin entry
+        if (binding.input.text.isEmpty()) {
+            isGalleryPinEntry = true
+            galleryPinBuffer = ""
+        }
+        addSymbol(view, "×")
+    }
+
+    fun factorialButton(view: View) {
+        if (isGalleryPinEntry && galleryPinBuffer.isNotEmpty()) {
+            // Try to access gallery with entered pin
+            val pin = galleryPinBuffer
+            isGalleryPinEntry = false
+            galleryPinBuffer = ""
+            // Check cooldown
+            if (!com.darkempire78.opencalculator.securegallery.PinAttemptManager.canAttempt()) {
+                Toast.makeText(this, "Access temporarily disabled.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
+            if (gallery != null) {
+                // Success: open gallery UI
+                com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
+                Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
+                // TODO: Launch gallery activity/screen here
+            } else {
+                com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
+                // Normal calculator behavior
+                addSymbol(view, "!")
+            }
+        } else {
+            addSymbol(view, "!")
+        }
     }
 
     @SuppressLint("SetTextI18n")
@@ -812,6 +1221,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun multiplyButton(view: View) {
+        // If input is blank, start gallery pin entry
+        if (binding.input.text.isEmpty()) {
+            isGalleryPinEntry = true
+            galleryPinBuffer = ""
+        }
         addSymbol(view, "×")
     }
 
@@ -909,7 +1323,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun factorialButton(view: View) {
-        addSymbol(view, "!")
+        if (isGalleryPinEntry && galleryPinBuffer.isNotEmpty()) {
+            // Try to access gallery with entered pin
+            val pin = galleryPinBuffer
+            isGalleryPinEntry = false
+            galleryPinBuffer = ""
+            // Check cooldown
+            if (!com.darkempire78.opencalculator.securegallery.PinAttemptManager.canAttempt()) {
+                Toast.makeText(this, "Access temporarily disabled.", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
+            if (gallery != null) {
+                // Success: open gallery UI
+                com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
+                Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
+                // TODO: Launch gallery activity/screen here
+            } else {
+                com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
+                // Normal calculator behavior
+                addSymbol(view, "!")
+            }
+        } else {
+            addSymbol(view, "!")
+        }
     }
 
     fun squareButton(view: View) {
