@@ -1,5 +1,9 @@
 package com.darkempire78.opencalculator.activities
 
+import com.darkempire78.opencalculator.securegallery.GalleryManager
+import com.darkempire78.opencalculator.securegallery.CryptoUtils
+import com.darkempire78.opencalculator.securegallery.Gallery
+
 import android.animation.LayoutTransition
 import android.annotation.SuppressLint
 import android.app.Activity
