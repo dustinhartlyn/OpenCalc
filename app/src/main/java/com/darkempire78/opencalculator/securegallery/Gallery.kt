@@ -1,0 +1,12 @@
+package com.darkempire78.opencalculator.securegallery
+
+import java.util.UUID
+
+// Data model for a secure gallery
+class Gallery(
+    val id: UUID = UUID.randomUUID(),
+    val name: String,
+    val salt: ByteArray,
+    val notes: MutableList<SecureNote> = mutableListOf(),
+    val photos: MutableList<SecurePhoto> = mutableListOf()
+)

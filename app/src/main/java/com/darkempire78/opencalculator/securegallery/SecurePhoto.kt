@@ -1,0 +1,11 @@
+package com.darkempire78.opencalculator.securegallery
+
+import java.util.UUID
+
+// Data model for an encrypted photo
+class SecurePhoto(
+    val id: UUID = UUID.randomUUID(),
+    val encryptedData: ByteArray,
+    val name: String,
+    val date: Long
+)
