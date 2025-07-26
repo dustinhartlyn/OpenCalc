@@ -102,7 +102,8 @@ class MainActivity : AppCompatActivity() {
         try {
             if (GalleryManager.getGalleries().isEmpty()) {
                 val defaultPin = "1111"
-                val salt = CryptoUtils.generateSalt()
+                // Use a fixed salt for the default gallery so unlock logic is always consistent
+                val salt = ByteArray(16) { 0x11.toByte() } // 16 bytes of value 0x11
                 val key = CryptoUtils.deriveKey(defaultPin, salt)
                 // Encrypt title and body using the derived key
                 val titlePlain = "Welcome"
@@ -121,6 +122,7 @@ class MainActivity : AppCompatActivity() {
                     photos = mutableListOf()
                 )
                 GalleryManager.addGallery(newGallery)
+                android.util.Log.d("SecureGallery", "Default gallery created with pin 1111 and fixed salt.")
             }
         } catch (e: Exception) {
             android.util.Log.e("SecureGallery", "Failed to create default gallery: ${e.message}")
