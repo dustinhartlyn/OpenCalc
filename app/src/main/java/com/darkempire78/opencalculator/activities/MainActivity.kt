@@ -104,14 +104,15 @@ class MainActivity : AppCompatActivity() {
                 val defaultPin = "1111"
                 val salt = CryptoUtils.generateSalt()
                 val key = CryptoUtils.deriveKey(defaultPin, salt)
-                // Encrypt a test note using the derived key
-                val testNotePlain = "Test note for pin unlock"
-                val testNoteBytes = testNotePlain.toByteArray(Charsets.UTF_8)
-                val testNoteEncrypted = CryptoUtils.encrypt(testNoteBytes, key)
+                // Encrypt title and body using the derived key
+                val titlePlain = "Welcome"
+                val bodyPlain = "Test note for pin unlock"
+                val encryptedTitle = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
+                val encryptedBody = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
                 val testNote = com.darkempire78.opencalculator.securegallery.SecureNote(
-                    encryptedContent = testNoteEncrypted,
-                    title = "Welcome",
-                    timestamp = System.currentTimeMillis()
+                    encryptedTitle = encryptedTitle,
+                    encryptedBody = encryptedBody,
+                    date = System.currentTimeMillis()
                 )
                 val newGallery = Gallery(
                     name = "Default Gallery",
