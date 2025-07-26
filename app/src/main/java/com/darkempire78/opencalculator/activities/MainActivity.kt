@@ -107,11 +107,11 @@ class MainActivity : AppCompatActivity() {
                 // Encrypt title and body using the derived key
                 val titlePlain = "Welcome"
                 val bodyPlain = "Test note for pin unlock"
-                val encryptedTitle = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
-                val encryptedBody = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
+                val encryptedTitlePair = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
+                val encryptedBodyPair = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
                 val testNote = com.darkempire78.opencalculator.securegallery.SecureNote(
-                    encryptedTitle = encryptedTitle,
-                    encryptedBody = encryptedBody,
+                    encryptedTitle = encryptedTitlePair.first,
+                    encryptedBody = encryptedBodyPair.first,
                     date = System.currentTimeMillis()
                 )
                 val newGallery = Gallery(
