@@ -103,15 +103,16 @@ class MainActivity : AppCompatActivity() {
             if (GalleryManager.getGalleries().isEmpty()) {
                 val defaultPin = "1111"
                 val salt = CryptoUtils.generateSalt()
-                // Optionally, you may want to store a test encrypted value to verify unlock
+                val key = CryptoUtils.deriveKey(defaultPin, salt)
+                // Encrypt a test note using the derived key
+                val testNotePlain = "Test note for pin unlock"
+                val testNoteEncrypted = CryptoUtils.encrypt(testNotePlain, key)
                 val newGallery = Gallery(
                     name = "Default Gallery",
                     salt = salt,
-                    notes = mutableListOf(),
+                    notes = mutableListOf(testNoteEncrypted),
                     photos = mutableListOf()
                 )
-                // You may want to save an encrypted test value here using the derived key
-                // val key = CryptoUtils.deriveKey(defaultPin, salt)
                 GalleryManager.addGallery(newGallery)
             }
         } catch (e: Exception) {
