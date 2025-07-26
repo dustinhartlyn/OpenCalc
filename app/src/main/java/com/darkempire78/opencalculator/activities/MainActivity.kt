@@ -989,8 +989,8 @@ class MainActivity : AppCompatActivity() {
                 // Launch GalleryActivity to show notes/photos
                 val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
                 intent.putExtra("gallery_name", gallery.name)
-                intent.putParcelableArrayListExtra("gallery_notes", ArrayList(gallery.notes))
-                intent.putParcelableArrayListExtra("gallery_photos", ArrayList(gallery.photos))
+                intent.putExtra("gallery_notes", ArrayList(gallery.notes))
+                intent.putExtra("gallery_photos", ArrayList(gallery.photos))
                 startActivity(intent)
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
