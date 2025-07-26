@@ -97,13 +97,17 @@ class MainActivity : AppCompatActivity() {
         // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
         try {
             if (GalleryManager.getGalleries().isEmpty()) {
-               val salt = CryptoUtils.generateSalt()
+                val defaultPin = "1111"
+                val salt = CryptoUtils.generateSalt()
+                // Optionally, you may want to store a test encrypted value to verify unlock
                 val newGallery = Gallery(
                     name = "Default Gallery",
                     salt = salt,
-                    notes = mutableListOf(), // or initial notes
-                    photos = mutableListOf() // or initial photos
+                    notes = mutableListOf(),
+                    photos = mutableListOf()
                 )
+                // You may want to save an encrypted test value here using the derived key
+                // val key = CryptoUtils.deriveKey(defaultPin, salt)
                 GalleryManager.addGallery(newGallery)
             }
         } catch (e: Exception) {
