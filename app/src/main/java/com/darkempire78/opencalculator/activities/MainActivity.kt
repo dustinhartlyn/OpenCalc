@@ -533,5 +533,6 @@ private fun updateResultDisplay() {
 private fun addSymbol(view: View, symbol: String) {
     // TODO: Implement symbol addition logic
     // Example: binding.input.append(symbol)
-}              
+}  
+}            
 
