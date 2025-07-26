@@ -984,14 +984,17 @@ class MainActivity : AppCompatActivity() {
             val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
             if (gallery != null) {
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
-                // Success: open gallery UI
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
                 Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
-                // TODO: Launch gallery activity/screen here
+                // Launch GalleryActivity to show notes/photos
+                val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
+                intent.putExtra("gallery_name", gallery.name)
+                intent.putParcelableArrayListExtra("gallery_notes", ArrayList(gallery.notes))
+                intent.putParcelableArrayListExtra("gallery_photos", ArrayList(gallery.photos))
+                startActivity(intent)
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
                 com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
-                // Normal calculator behavior
                 addSymbol(view, "!")
             }
         } else {
