@@ -46,5 +46,9 @@
             </intent-filter>
         </service>
 
+        <activity
+            android:name="com.darkempire78.opencalculator.securegallery.GalleryActivity"
+            android:exported="false" />
+
 </application>
 </manifest>
