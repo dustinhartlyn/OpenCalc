@@ -386,13 +386,6 @@ class MainActivity : AppCompatActivity() {
         popup.show()
     }
 
-    fun openAppMenu(view: View) {
-        val popup = PopupMenu(this, view)
-        val inflater = popup.menuInflater
-        inflater.inflate(R.menu.app_menu, popup.menu)
-        popup.show()
-    }
-
     // Only one keyDigitPadMappingToDisplay function retained
     fun keyDigitPadMappingToDisplay(view: View) {
         val digit = (view as Button).text.toString()
@@ -449,13 +442,6 @@ class MainActivity : AppCompatActivity() {
         } else {
             addSymbol(view, "!")
         }
-    }
-
-    fun openAppMenu(view: View) {
-        val popup = PopupMenu(this, view)
-        val inflater = popup.menuInflater
-        inflater.inflate(R.menu.app_menu, popup.menu)
-        popup.show()
     }
 
     fun openAbout(menuItem: MenuItem) {
@@ -517,4 +503,35 @@ class MainActivity : AppCompatActivity() {
                         )
                     )
                 }
-               
+            }
+        }
+    }
+
+    // --- Helper function stubs to resolve unresolved references ---
+
+private fun updateDisplay(view: View, value: String) {
+    // TODO: Implement display update logic
+    // Example: binding.input.append(value)
+}
+
+private fun checkEmptyHistoryForNoHistoryLabel() {
+    // TODO: Implement logic to show/hide no history label
+}
+
+private fun enableOrDisableScientistMode() {
+    // TODO: Implement scientist mode toggle
+}
+
+private fun toggleDegreeMode() {
+    // TODO: Implement degree/radian mode toggle
+}
+
+private fun updateResultDisplay() {
+    // TODO: Implement result display update
+}
+
+private fun addSymbol(view: View, symbol: String) {
+    // TODO: Implement symbol addition logic
+    // Example: binding.input.append(symbol)
+}              
+
