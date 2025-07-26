@@ -60,29 +60,33 @@ class GalleryActivity : AppCompatActivity() {
         // Setup hamburger menu
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
         setSupportActionBar(toolbar)
-        toolbar.inflateMenu(R.menu.gallery_menu)
         toolbar.setNavigationIcon(R.drawable.ic_launcher_foreground) // Use default app icon for now
         toolbar.setNavigationOnClickListener {
-            // Optionally open a drawer or show a toast
             Toast.makeText(this, "Menu", Toast.LENGTH_SHORT).show()
         }
-        toolbar.setOnMenuItemClickListener { menuItem ->
-            when (menuItem.itemId) {
-                R.id.action_create_gallery -> {
-                    showCreateGalleryDialog()
-                    true
-                }
-                R.id.action_rename_gallery -> {
-                    showRenameGalleryDialog(galleryName)
-                    true
-                }
-                R.id.action_delete_gallery -> {
-                    showDeleteGalleryDialog(galleryName)
-                    true
-                }
-                else -> false
+    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
+        menuInflater.inflate(R.menu.gallery_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+        return when (item.itemId) {
+            R.id.action_create_gallery -> {
+                showCreateGalleryDialog()
+                true
             }
+            R.id.action_rename_gallery -> {
+                showRenameGalleryDialog(galleryName)
+                true
+            }
+            R.id.action_delete_gallery -> {
+                showDeleteGalleryDialog(galleryName)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
         }
+    }
     }
 
     // Dialog for creating a gallery
