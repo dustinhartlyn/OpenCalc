@@ -110,9 +110,12 @@ class MainActivity : AppCompatActivity() {
                 val bodyPlain = "Test note for pin unlock"
                 val encryptedTitlePair = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
                 val encryptedBodyPair = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
+                // Store IV + ciphertext for both title and body
+                val encryptedTitle = encryptedTitlePair.first + encryptedTitlePair.second
+                val encryptedBody = encryptedBodyPair.first + encryptedBodyPair.second
                 val testNote = com.darkempire78.opencalculator.securegallery.SecureNote(
-                    encryptedTitle = encryptedTitlePair.first,
-                    encryptedBody = encryptedBodyPair.first,
+                    encryptedTitle = encryptedTitle,
+                    encryptedBody = encryptedBody,
                     date = System.currentTimeMillis()
                 )
                 val newGallery = Gallery(
