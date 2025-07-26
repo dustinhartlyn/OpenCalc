@@ -94,6 +94,20 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
+        try {
+            if (com.darkempire78.opencalculator.securegallery.GalleryManager.getAllGalleries().isEmpty()) {
+                com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(
+                    pin = "1111",
+                    name = "Default Gallery",
+                    description = "This is your default secure gallery.",
+                    initialData = emptyList() // or null, depending on your implementation
+                )
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Failed to create default gallery: ${e.message}")
+        }
+
         // Enable the possibility to show the activity on the lock screen
         window.addFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
