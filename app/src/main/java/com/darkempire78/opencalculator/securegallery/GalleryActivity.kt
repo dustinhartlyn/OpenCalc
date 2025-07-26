@@ -56,6 +56,83 @@ class GalleryActivity : AppCompatActivity() {
         }
 
         Toast.makeText(this, "Opened $galleryName with ${notes.size} notes and ${photos.size} photos", Toast.LENGTH_SHORT).show()
+
+        // Setup hamburger menu
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
+        setSupportActionBar(toolbar)
+        toolbar.inflateMenu(R.menu.gallery_menu)
+        toolbar.setOnMenuItemClickListener { menuItem ->
+            when (menuItem.itemId) {
+                R.id.action_create_gallery -> {
+                    showCreateGalleryDialog()
+                    true
+                }
+                R.id.action_rename_gallery -> {
+                    showRenameGalleryDialog(galleryName)
+                    true
+                }
+                R.id.action_delete_gallery -> {
+                    showDeleteGalleryDialog(galleryName)
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    // Dialog for creating a gallery
+    private fun showCreateGalleryDialog() {
+        val pinInput = android.widget.EditText(this)
+        pinInput.hint = "Enter PIN"
+        val nameInput = android.widget.EditText(this)
+        nameInput.hint = "Enter Gallery Name"
+        val layout = android.widget.LinearLayout(this)
+        layout.orientation = android.widget.LinearLayout.VERTICAL
+        layout.addView(pinInput)
+        layout.addView(nameInput)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Create Gallery")
+            .setView(layout)
+            .setPositiveButton("Create") { _, _ ->
+                val pin = pinInput.text.toString()
+                val name = nameInput.text.toString()
+                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name)
+                android.util.Log.d("SecureGallery", "CreateGalleryDialog: pin=$pin name=$name result=$result")
+                Toast.makeText(this, if (result) "Gallery created" else "Failed to create gallery", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // Dialog for renaming a gallery
+    private fun showRenameGalleryDialog(oldName: String) {
+        val nameInput = android.widget.EditText(this)
+        nameInput.hint = "Enter New Gallery Name"
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Rename Gallery")
+            .setView(nameInput)
+            .setPositiveButton("Rename") { _, _ ->
+                val newName = nameInput.text.toString()
+                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.renameGallery(oldName, newName)
+                android.util.Log.d("SecureGallery", "RenameGalleryDialog: oldName=$oldName newName=$newName result=$result")
+                Toast.makeText(this, if (result) "Gallery renamed" else "Failed to rename gallery", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    // Dialog for deleting a gallery
+    private fun showDeleteGalleryDialog(name: String) {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Delete Gallery")
+            .setMessage("Are you sure you want to delete $name?")
+            .setPositiveButton("Delete") { _, _ ->
+                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.deleteGallery(name)
+                android.util.Log.d("SecureGallery", "DeleteGalleryDialog: name=$name result=$result")
+                Toast.makeText(this, if (result) "Gallery deleted" else "Failed to delete gallery", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     class NoteViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
