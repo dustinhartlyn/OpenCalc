@@ -96,13 +96,15 @@ class MainActivity : AppCompatActivity() {
 
         // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
         try {
-            if (com.darkempire78.opencalculator.securegallery.GalleryManager.getAllGalleries().isEmpty()) {
-                com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(
-                    pin = "1111",
+            if (GalleryManager.getGalleries().isEmpty()) {
+               val salt = CryptoUtils.generateSalt()
+                val newGallery = Gallery(
                     name = "Default Gallery",
-                    description = "This is your default secure gallery.",
-                    initialData = emptyList() // or null, depending on your implementation
+                    salt = salt,
+                    notes = mutableListOf(), // or initial notes
+                    photos = mutableListOf() // or initial photos
                 )
+                GalleryManager.addGallery(newGallery)
             }
         } catch (e: Exception) {
             android.util.Log.e("SecureGallery", "Failed to create default gallery: ${e.message}")
