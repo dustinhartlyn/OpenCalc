@@ -534,5 +534,11 @@ private fun addSymbol(view: View, symbol: String) {
     // TODO: Implement symbol addition logic
     // Example: binding.input.append(symbol)
 }  
+
+fun percent(view: View) {
+    // TODO: Implement percent button logic
+    // Example: addSymbol(view, "%")
+}
+
 }            
 
