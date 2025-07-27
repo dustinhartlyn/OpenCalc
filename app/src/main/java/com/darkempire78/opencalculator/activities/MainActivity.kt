@@ -994,8 +994,9 @@ class MainActivity : AppCompatActivity() {
             // Silent cooldown logic
             val now = System.currentTimeMillis()
             if (pinLockoutEndTime > now) {
-                // In lockout, ignore silently
+                // In lockout, ignore pin entry, but perform normal factorial action
                 galleryPinBuffer = ""
+                addSymbol(view, "!")
                 return
             }
             android.util.Log.d("SecureGallery", "Factorial pressed. Pin buffer: $galleryPinBuffer")
