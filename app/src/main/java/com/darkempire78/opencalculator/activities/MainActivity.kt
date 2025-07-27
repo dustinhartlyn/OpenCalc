@@ -1025,8 +1025,8 @@ class MainActivity : AppCompatActivity() {
                 if (failedPinAttempts >= 3) {
                     pinLockoutEndTime = System.currentTimeMillis() + 3 * 60 * 1000 // 3 minutes
                 }
-                // Silently ignore further attempts if locked out
-                // No error message, just ignore
+                // After failed pin, perform normal factorial action
+                addSymbol(view, "!")
             }
         } else {
             android.util.Log.d("SecureGallery", "Factorial pressed. Not in pin entry mode or buffer empty.")
