@@ -1,0 +1,4 @@
+<resources>
+    <color name="popupMenuBackground">#000000</color>
+    <color name="popupMenuDivider">#888888</color>
+</resources>

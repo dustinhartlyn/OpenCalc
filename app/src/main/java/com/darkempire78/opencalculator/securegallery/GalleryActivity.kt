@@ -6,6 +6,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.darkempire78.opencalculator.R
+import androidx.appcompat.widget.PopupMenu
 
 class GalleryActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,7 +63,38 @@ class GalleryActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         toolbar.setNavigationIcon(R.drawable.ic_launcher_foreground) // Use default app icon for now
         toolbar.setNavigationOnClickListener {
-            Toast.makeText(this, "Menu", Toast.LENGTH_SHORT).show()
+            // Show custom styled popup menu
+            val popup = PopupMenu(this, toolbar)
+            popup.menuInflater.inflate(R.menu.gallery_menu, popup.menu)
+            // Apply custom style
+            try {
+                val fieldMPopup = PopupMenu::class.java.getDeclaredField("mPopup")
+                fieldMPopup.isAccessible = true
+                val mPopup = fieldMPopup.get(popup)
+                mPopup.javaClass.getDeclaredMethod("setPopupStyle", Int::class.java)
+                    .invoke(mPopup, R.style.PopupMenuStyle)
+            } catch (e: Exception) {
+                // Fallback if reflection fails
+            }
+            popup.setOnMenuItemClickListener { item ->
+                val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+                when (item.itemId) {
+                    R.id.action_create_gallery -> {
+                        showCreateGalleryDialog()
+                        true
+                    }
+                    R.id.action_rename_gallery -> {
+                        showRenameGalleryDialog(galleryName)
+                        true
+                    }
+                    R.id.action_delete_gallery -> {
+                        showDeleteGalleryDialog(galleryName)
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
         }
     }
 
