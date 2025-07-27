@@ -1,6 +1,7 @@
 <resources>
     <style name="PopupMenuStyle" parent="Widget.AppCompat.PopupMenu">
         <item name="android:popupBackground">@color/popupMenuBackground</item>
+        <item name="android:textColor">@color/popupMenuTextColor</item>
     </style>
     <style name="PopupMenuDividerStyle" parent="Widget.AppCompat.ListView">
         <item name="android:divider">@color/popupMenuDivider</item>
