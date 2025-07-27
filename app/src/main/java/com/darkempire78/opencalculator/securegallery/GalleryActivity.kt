@@ -27,9 +27,6 @@ class GalleryActivity : AppCompatActivity() {
         intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
         startActivityForResult(intent, PICK_IMAGES_REQUEST)
     }
-
-    // SecurePhoto class for encrypted photo storage
-    data class SecurePhoto(val encryptedData: ByteArray)
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_IMAGES_REQUEST && resultCode == RESULT_OK && data != null) {
@@ -57,7 +54,7 @@ class GalleryActivity : AppCompatActivity() {
                     if (key != null) {
                         val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
                         val combined = iv + encrypted
-                        encryptedPhotos.add(SecurePhoto(combined))
+                        encryptedPhotos.add(SecurePhoto(encryptedData = combined, name = "photo_${System.currentTimeMillis()}.jpg", date = System.currentTimeMillis()))
                         // Try to get original file path for deletion prompt
                         val path = uri.path ?: ""
                         originalPaths.add(path)
@@ -285,17 +282,6 @@ class GalleryActivity : AppCompatActivity() {
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
                 }
-    // Request code for picking images
-    private val PICK_IMAGES_REQUEST = 1001
-
-    // Handler for Add Pictures menu item
-    private fun addPicturesToGallery() {
-        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
-        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE)
-        intent.type = "image/*"
-        intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
-        startActivityForResult(intent, PICK_IMAGES_REQUEST)
-    }
                 dialog.dismiss()
             }
             container.addView(itemView)
