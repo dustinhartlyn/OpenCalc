@@ -64,12 +64,14 @@ class GalleryActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener {
             Toast.makeText(this, "Menu", Toast.LENGTH_SHORT).show()
         }
-    fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
+    }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
         menuInflater.inflate(R.menu.gallery_menu, menu)
         return true
     }
 
-    fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
         return when (item.itemId) {
             R.id.action_create_gallery -> {
@@ -86,7 +88,6 @@ class GalleryActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
-    }
     }
 
     // Dialog for creating a gallery
