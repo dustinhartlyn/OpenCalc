@@ -21,7 +21,8 @@ class GalleryActivity : AppCompatActivity() {
 
         // Enable swipe-to-go-back gesture
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent?, velocityX: Float, velocityY: Float): Boolean {
+            // Correct signature for Kotlin, no override keyword needed if not open
+            fun onFling(e1: MotionEvent?, e2: MotionEvent?, velocityX: Float, velocityY: Float): Boolean {
                 if (e1 != null && e2 != null) {
                     val deltaX = e2.x - e1.x
                     if (deltaX > 200 && Math.abs(velocityX) > Math.abs(velocityY)) {
