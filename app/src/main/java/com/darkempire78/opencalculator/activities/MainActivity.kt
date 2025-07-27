@@ -1004,6 +1004,8 @@ class MainActivity : AppCompatActivity() {
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
                 Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
+                // Clear calculator display as if "AC" was pressed
+                clearButton(view)
                 // Launch GalleryActivity to show notes/photos
                 val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
                 intent.putExtra("gallery_name", gallery.name)
