@@ -2,7 +2,9 @@ package com.darkempire78.opencalculator.securegallery
 
 import android.app.Dialog
 import android.os.Bundle
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
@@ -16,6 +18,23 @@ class GalleryActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
+
+        // Enable swipe-to-go-back gesture
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent?, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null && e2 != null) {
+                    val deltaX = e2.x - e1.x
+                    if (deltaX > 200 && Math.abs(velocityX) > Math.abs(velocityY)) {
+                        finish()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        findViewById<android.view.View>(android.R.id.content).setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+        }
 
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
         val notes = intent.getSerializableExtra("gallery_notes") as? ArrayList<SecureNote> ?: arrayListOf()
