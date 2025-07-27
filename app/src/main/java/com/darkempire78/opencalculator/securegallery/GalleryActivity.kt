@@ -115,45 +115,29 @@ class GalleryActivity : AppCompatActivity() {
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
 
-        // Enable swipe-to-go-back gesture
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                if (e1 != null) {
-                    val deltaX = e2.x - e1.x
-                    if (deltaX > 300 && Math.abs(deltaX) > Math.abs(e2.y - e1.y)) {
-                        finish()
-                        return true
-                    }
-        val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
-        photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
+        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+        
+        // Get gallery data from GalleryManager instead of Intent
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        val notes = gallery?.notes ?: mutableListOf()
+        val photos = gallery?.photos ?: mutableListOf()
 
-        // Decrypt and display photos as thumbnails
-        val decryptedPhotos = photos.mapNotNull { photo ->
+        findViewById<android.widget.TextView>(R.id.galleryTitle).text = galleryName
+
+        // Decrypt notes using pin and salt
+        val pin = TempPinHolder.pin ?: ""
+        val salt = GalleryManager.getGalleries().find { it.name == galleryName }?.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+
+        val decryptedNotes = notes.map { note ->
+            var title = "(Encrypted)"
+            var body = "(Encrypted)"
             if (key != null) {
                 try {
-                    val iv = photo.encryptedData.copyOfRange(0, 16)
-                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                    decryptedBytes
-                } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
-                    null
-                }
-            } else {
-                null
-            }
-        }
-
-        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
-                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
-                return PhotoThumbnailViewHolder(v)
-            }
-            override fun getItemCount() = decryptedPhotos.size
-            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
-                holder.bind(decryptedPhotos[position])
-            }
-        }
+                    val ivTitle = note.encryptedTitle.copyOfRange(0, 16)
+                    val ctTitle = note.encryptedTitle.copyOfRange(16, note.encryptedTitle.size)
+                    val ivBody = note.encryptedBody.copyOfRange(0, 16)
+                    val ctBody = note.encryptedBody.copyOfRange(16, note.encryptedBody.size)
                     title = String(CryptoUtils.decrypt(ivTitle, ctTitle, key), Charsets.UTF_8)
                     body = String(CryptoUtils.decrypt(ivBody, ctBody, key), Charsets.UTF_8)
                 } catch (e: Exception) {
@@ -177,18 +161,18 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
 
-        // Setup photos RecyclerView
+        // Setup photos RecyclerView with two-column grid
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
-        photosRecyclerView.layoutManager = LinearLayoutManager(this)
+        photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
         
-        // Decrypt and display photos
+        // Decrypt and display photos as thumbnails
         val decryptedPhotos = photos.mapNotNull { photo ->
             if (key != null) {
                 try {
                     val iv = photo.encryptedData.copyOfRange(0, 16)
                     val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
                     val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                    Triple(photo.name, photo.date, decryptedBytes)
+                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 } catch (e: Exception) {
                     android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
                     null
@@ -197,20 +181,38 @@ class GalleryActivity : AppCompatActivity() {
                 null
             }
         }
-        
-        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
-                val v = LayoutInflater.from(parent.context).inflate(android.R.layout.simple_list_item_2, parent, false)
-                return PhotoViewHolder(v)
+
+        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
+                return PhotoThumbnailViewHolder(v)
             }
             override fun getItemCount() = decryptedPhotos.size
-            override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
-                val photo = decryptedPhotos[position]
-                holder.bind(photo.first, "Size: ${photo.third.size} bytes")
+            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
+                holder.bind(decryptedPhotos[position])
             }
         }
 
         Toast.makeText(this, "Opened $galleryName with ${notes.size} notes and ${photos.size} photos", Toast.LENGTH_SHORT).show()
+
+        // Enable swipe-to-go-back gesture
+        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null) {
+                    val deltaX = e2.x - e1.x
+                    if (deltaX > 300 && Math.abs(deltaX) > Math.abs(e2.y - e1.y)) {
+                        finish()
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+
+        findViewById<android.view.View>(R.id.galleryTitle).setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            true
+        }
 
         // Setup hamburger menu
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
@@ -219,8 +221,6 @@ class GalleryActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener {
             showCustomGalleryMenu()
         }
-    }
-
     override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
         menuInflater.inflate(R.menu.gallery_menu, menu)
         return true
