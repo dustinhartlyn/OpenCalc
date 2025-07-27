@@ -15,6 +15,21 @@ import com.darkempire78.opencalculator.R
 import androidx.appcompat.widget.PopupMenu
 
 class GalleryActivity : AppCompatActivity() {
+    companion object {
+        const val PICK_IMAGES_REQUEST = 1001
+    }
+
+    // Handler for Add Pictures menu item
+    private fun addPicturesToGallery() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE)
+        intent.type = "image/*"
+        intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
+        startActivityForResult(intent, PICK_IMAGES_REQUEST)
+    }
+
+    // SecurePhoto class for encrypted photo storage
+    data class SecurePhoto(val encryptedData: ByteArray)
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode == PICK_IMAGES_REQUEST && resultCode == RESULT_OK && data != null) {
@@ -32,7 +47,7 @@ class GalleryActivity : AppCompatActivity() {
             } else if (data.data != null) {
                 uris.add(data.data!!)
             }
-            val encryptedPhotos = mutableListOf<String>()
+            val encryptedPhotos = mutableListOf<SecurePhoto>()
             val originalPaths = mutableListOf<String>()
             for (uri in uris) {
                 try {
@@ -40,12 +55,9 @@ class GalleryActivity : AppCompatActivity() {
                     val bytes = inputStream?.readBytes() ?: continue
                     inputStream.close()
                     if (key != null) {
-                        val iv = CryptoUtils.generateIv()
-                        val encrypted = CryptoUtils.encrypt(bytes, key, iv)
-                        // Store as base64(iv + ciphertext)
+                        val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
                         val combined = iv + encrypted
-                        val encoded = android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
-                        encryptedPhotos.add(encoded)
+                        encryptedPhotos.add(SecurePhoto(combined))
                         // Try to get original file path for deletion prompt
                         val path = uri.path ?: ""
                         originalPaths.add(path)

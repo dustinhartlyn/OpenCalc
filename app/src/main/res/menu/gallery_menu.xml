@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/action_add_pictures" android:title="Add Pictures" android:showAsAction="never" />
     <item android:id="@+id/action_create_gallery" android:title="Create Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_rename_gallery" android:title="Rename Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_delete_gallery" android:title="Delete Gallery" android:showAsAction="never" />
