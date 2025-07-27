@@ -1,6 +1,10 @@
 package com.darkempire78.opencalculator.securegallery
 
+import android.app.Dialog
 import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -63,38 +67,7 @@ class GalleryActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         toolbar.setNavigationIcon(R.drawable.ic_launcher_foreground) // Use default app icon for now
         toolbar.setNavigationOnClickListener {
-            // Show custom styled popup menu
-            val popup = PopupMenu(this, toolbar)
-            popup.menuInflater.inflate(R.menu.gallery_menu, popup.menu)
-            // Apply custom style
-            try {
-                val fieldMPopup = PopupMenu::class.java.getDeclaredField("mPopup")
-                fieldMPopup.isAccessible = true
-                val mPopup = fieldMPopup.get(popup)
-                mPopup.javaClass.getDeclaredMethod("setPopupStyle", Int::class.java)
-                    .invoke(mPopup, R.style.PopupMenuStyle)
-            } catch (e: Exception) {
-                // Fallback if reflection fails
-            }
-            popup.setOnMenuItemClickListener { item ->
-                val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
-                when (item.itemId) {
-                    R.id.action_create_gallery -> {
-                        showCreateGalleryDialog()
-                        true
-                    }
-                    R.id.action_rename_gallery -> {
-                        showRenameGalleryDialog(galleryName)
-                        true
-                    }
-                    R.id.action_delete_gallery -> {
-                        showDeleteGalleryDialog(galleryName)
-                        true
-                    }
-                    else -> false
-                }
-            }
-            popup.show()
+            showCustomGalleryMenu()
         }
     }
 
@@ -177,6 +150,36 @@ class GalleryActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    private fun showCustomGalleryMenu() {
+        val dialog = Dialog(this)
+        val menuItems = listOf(
+            Pair("Create Gallery", R.id.action_create_gallery),
+            Pair("Rename Gallery", R.id.action_rename_gallery),
+            Pair("Delete Gallery", R.id.action_delete_gallery)
+        )
+        val container = android.widget.LinearLayout(this)
+        container.orientation = android.widget.LinearLayout.VERTICAL
+        container.setBackgroundColor(android.graphics.Color.BLACK)
+        for ((title, id) in menuItems) {
+            val itemView = LayoutInflater.from(this).inflate(R.layout.custom_popup_menu_item, container, false)
+            val textView = itemView.findViewById<TextView>(R.id.menuItemText)
+            textView.text = title
+            textView.setOnClickListener {
+                val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+                when (id) {
+                    R.id.action_create_gallery -> showCreateGalleryDialog()
+                    R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
+                    R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
+                }
+                dialog.dismiss()
+            }
+            container.addView(itemView)
+        }
+        dialog.setContentView(container)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
     }
 
     class NoteViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
