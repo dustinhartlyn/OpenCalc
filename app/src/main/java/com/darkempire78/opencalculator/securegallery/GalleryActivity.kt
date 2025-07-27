@@ -161,7 +161,7 @@ class GalleryActivity : AppCompatActivity() {
         )
         val container = android.widget.LinearLayout(this)
         container.orientation = android.widget.LinearLayout.VERTICAL
-        container.setBackgroundColor(android.graphics.Color.BLACK)
+        container.setBackgroundColor(android.graphics.Color.WHITE)
         for ((title, id) in menuItems) {
             val itemView = LayoutInflater.from(this).inflate(R.layout.custom_popup_menu_item, container, false)
             val textView = itemView.findViewById<TextView>(R.id.menuItemText)
