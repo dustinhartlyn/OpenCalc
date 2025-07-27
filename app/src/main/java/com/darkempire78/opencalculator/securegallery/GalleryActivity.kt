@@ -132,7 +132,18 @@ class GalleryActivity : AppCompatActivity() {
                 val name = nameInput.text.toString()
                 val result = com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name)
                 android.util.Log.d("SecureGallery", "CreateGalleryDialog: pin=$pin name=$name result=$result")
-                Toast.makeText(this, if (result) "Gallery created" else "Failed to create gallery", Toast.LENGTH_SHORT).show()
+                if (result) {
+                    Toast.makeText(this, "Gallery created", Toast.LENGTH_SHORT).show()
+                    // Close current and open new gallery
+                    val intent = intent
+                    intent.putExtra("gallery_name", name)
+                    intent.putExtra("gallery_notes", ArrayList<SecureNote>())
+                    intent.putExtra("gallery_photos", ArrayList<String>())
+                    finish()
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "Failed to create gallery", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
@@ -165,7 +176,12 @@ class GalleryActivity : AppCompatActivity() {
                 val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.getGalleries().find { it.name == name }
                 val result = if (gallery != null) com.darkempire78.opencalculator.securegallery.GalleryManager.deleteGallery(gallery.id) else false
                 android.util.Log.d("SecureGallery", "DeleteGalleryDialog: name=$name result=$result")
-                Toast.makeText(this, if (result) "Gallery deleted" else "Failed to delete gallery", Toast.LENGTH_SHORT).show()
+                if (result) {
+                    Toast.makeText(this, "Gallery deleted", Toast.LENGTH_SHORT).show()
+                    finish() // Close gallery and return to calculator
+                } else {
+                    Toast.makeText(this, "Failed to delete gallery", Toast.LENGTH_SHORT).show()
+                }
             }
             .setNegativeButton("Cancel", null)
             .show()
