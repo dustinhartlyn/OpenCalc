@@ -124,37 +124,36 @@ class GalleryActivity : AppCompatActivity() {
                         finish()
                         return true
                     }
-                }
-                return false
-            }
-        })
-        findViewById<android.view.View>(android.R.id.content).setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-        }
+        val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
+        photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
 
-        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
-        
-        // Get gallery data from GalleryManager instead of Intent
-        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
-        val notes = gallery?.notes ?: mutableListOf()
-        val photos = gallery?.photos ?: mutableListOf()
-
-        findViewById<android.widget.TextView>(R.id.galleryTitle).text = galleryName
-
-        // Decrypt notes using pin and salt
-        val pin = TempPinHolder.pin ?: ""
-        val salt = GalleryManager.getGalleries().find { it.name == galleryName }?.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
-
-        val decryptedNotes = notes.map { note ->
-            var title = "(Encrypted)"
-            var body = "(Encrypted)"
+        // Decrypt and display photos as thumbnails
+        val decryptedPhotos = photos.mapNotNull { photo ->
             if (key != null) {
                 try {
-                    val ivTitle = note.encryptedTitle.copyOfRange(0, 16)
-                    val ctTitle = note.encryptedTitle.copyOfRange(16, note.encryptedTitle.size)
-                    val ivBody = note.encryptedBody.copyOfRange(0, 16)
-                    val ctBody = note.encryptedBody.copyOfRange(16, note.encryptedBody.size)
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                    decryptedBytes
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
+                    null
+                }
+            } else {
+                null
+            }
+        }
+
+        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
+                return PhotoThumbnailViewHolder(v)
+            }
+            override fun getItemCount() = decryptedPhotos.size
+            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
+                holder.bind(decryptedPhotos[position])
+            }
+        }
                     title = String(CryptoUtils.decrypt(ivTitle, ctTitle, key), Charsets.UTF_8)
                     body = String(CryptoUtils.decrypt(ivBody, ctBody, key), Charsets.UTF_8)
                 } catch (e: Exception) {
@@ -358,12 +357,11 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
     
-    class PhotoViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(name: String, info: String) {
-            val nameView = itemView.findViewById<android.widget.TextView>(android.R.id.text1)
-            val infoView = itemView.findViewById<android.widget.TextView>(android.R.id.text2)
-            nameView.text = name
-            infoView.text = info
+    class PhotoThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
+        fun bind(imageBytes: ByteArray) {
+            val imageView = itemView.findViewById<android.widget.ImageView>(R.id.photoThumbnail)
+            val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+            imageView.setImageBitmap(bitmap)
         }
     }
 }
