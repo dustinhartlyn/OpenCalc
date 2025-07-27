@@ -15,6 +15,69 @@ import com.darkempire78.opencalculator.R
 import androidx.appcompat.widget.PopupMenu
 
 class GalleryActivity : AppCompatActivity() {
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PICK_IMAGES_REQUEST && resultCode == RESULT_OK && data != null) {
+            val galleryName = intent.getStringExtra("gallery_name") ?: return
+            val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+            val pin = TempPinHolder.pin ?: ""
+            val salt = gallery.salt
+            val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+            val uris = mutableListOf<android.net.Uri>()
+            if (data.clipData != null) {
+                val count = data.clipData!!.itemCount
+                for (i in 0 until count) {
+                    uris.add(data.clipData!!.getItemAt(i).uri)
+                }
+            } else if (data.data != null) {
+                uris.add(data.data!!)
+            }
+            val encryptedPhotos = mutableListOf<String>()
+            val originalPaths = mutableListOf<String>()
+            for (uri in uris) {
+                try {
+                    val inputStream = contentResolver.openInputStream(uri)
+                    val bytes = inputStream?.readBytes() ?: continue
+                    inputStream.close()
+                    if (key != null) {
+                        val iv = CryptoUtils.generateIv()
+                        val encrypted = CryptoUtils.encrypt(bytes, key, iv)
+                        // Store as base64(iv + ciphertext)
+                        val combined = iv + encrypted
+                        val encoded = android.util.Base64.encodeToString(combined, android.util.Base64.DEFAULT)
+                        encryptedPhotos.add(encoded)
+                        // Try to get original file path for deletion prompt
+                        val path = uri.path ?: ""
+                        originalPaths.add(path)
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to encrypt photo: $uri", e)
+                }
+            }
+            // Add encrypted photos to gallery
+            gallery.photos.addAll(encryptedPhotos)
+            // Prompt to delete originals
+            if (originalPaths.isNotEmpty()) {
+                android.app.AlertDialog.Builder(this)
+                    .setTitle("Delete Original Photos?")
+                    .setMessage("Do you want to delete the original photos from your device?")
+                    .setPositiveButton("Delete") { _, _ ->
+                        for (uri in uris) {
+                            try {
+                                contentResolver.delete(uri, null, null)
+                            } catch (e: Exception) {
+                                android.util.Log.e("SecureGallery", "Failed to delete original photo: $uri", e)
+                            }
+                        }
+                        Toast.makeText(this, "Original photos deleted", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Keep", null)
+                    .show()
+            }
+            // Refresh gallery UI (reload photos)
+            recreate()
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
@@ -190,6 +253,7 @@ class GalleryActivity : AppCompatActivity() {
     private fun showCustomGalleryMenu() {
         val dialog = Dialog(this)
         val menuItems = listOf(
+            Pair("Add Pictures", R.id.action_add_pictures),
             Pair("Create Gallery", R.id.action_create_gallery),
             Pair("Rename Gallery", R.id.action_rename_gallery),
             Pair("Delete Gallery", R.id.action_delete_gallery)
@@ -204,10 +268,22 @@ class GalleryActivity : AppCompatActivity() {
             textView.setOnClickListener {
                 val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
                 when (id) {
+                    R.id.action_add_pictures -> addPicturesToGallery()
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
                 }
+    // Request code for picking images
+    private val PICK_IMAGES_REQUEST = 1001
+
+    // Handler for Add Pictures menu item
+    private fun addPicturesToGallery() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
+        intent.addCategory(android.content.Intent.CATEGORY_OPENABLE)
+        intent.type = "image/*"
+        intent.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, true)
+        startActivityForResult(intent, PICK_IMAGES_REQUEST)
+    }
                 dialog.dismiss()
             }
             container.addView(itemView)
