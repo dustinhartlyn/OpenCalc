@@ -65,7 +65,7 @@ class GalleryActivity : AppCompatActivity() {
         // Setup hamburger menu
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
         setSupportActionBar(toolbar)
-        toolbar.setNavigationIcon(R.drawable.ic_launcher_foreground) // Use default app icon for now
+        toolbar.setNavigationIcon(R.drawable.ic_menu_black_background)
         toolbar.setNavigationOnClickListener {
             showCustomGalleryMenu()
         }
