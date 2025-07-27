@@ -13,6 +13,13 @@ object GalleryManager {
     fun setContext(context: Context) {
         applicationContext = context
     }
+
+    fun getGalleries(): List<Gallery> = galleries
+
+    fun addGallery(gallery: Gallery) {
+        galleries.add(gallery)
+    }
+
     // Create a new gallery with a pin and name
     fun createGallery(pin: String, name: String): Boolean {
         if (getGalleries().any { it.name == name }) {
@@ -72,13 +79,6 @@ object GalleryManager {
         saveGalleries()
         android.util.Log.d("SecureGallery", "Gallery deleted: ${gallery.name}")
         return true
-    }
-    private val galleries = mutableListOf<Gallery>()
-
-    fun getGalleries(): List<Gallery> = galleries
-
-    fun addGallery(gallery: Gallery) {
-        galleries.add(gallery)
     }
 
     fun findGalleryByPin(pin: String): Gallery? {
