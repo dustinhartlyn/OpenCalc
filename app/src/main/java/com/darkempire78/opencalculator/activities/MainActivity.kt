@@ -66,6 +66,9 @@ var appLanguage: Locale = Locale.getDefault()
 var currentTheme: Int = 0
 
 class MainActivity : AppCompatActivity() {
+    // --- Secure Gallery Pin Cooldown ---
+    private var failedPinAttempts = 0
+    private var pinLockoutEndTime: Long = 0L
     private lateinit var view: View
 
     // --- Secure Gallery Integration State ---
@@ -988,17 +991,18 @@ class MainActivity : AppCompatActivity() {
 
     fun factorialButton(view: View) {
         if (isGalleryPinEntry && galleryPinBuffer.isNotEmpty()) {
+            // Silent cooldown logic
+            val now = System.currentTimeMillis()
+            if (pinLockoutEndTime > now) {
+                // In lockout, ignore silently
+                galleryPinBuffer = ""
+                return
+            }
             android.util.Log.d("SecureGallery", "Factorial pressed. Pin buffer: $galleryPinBuffer")
             // Try to access gallery with entered pin
             val pin = galleryPinBuffer
             isGalleryPinEntry = false
             galleryPinBuffer = ""
-            // Check cooldown
-            if (!com.darkempire78.opencalculator.securegallery.PinAttemptManager.canAttempt()) {
-                android.util.Log.d("SecureGallery", "Pin attempt blocked by cooldown.")
-                Toast.makeText(this, "Access temporarily disabled.", Toast.LENGTH_SHORT).show()
-                return
-            }
             val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
             if (gallery != null) {
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
@@ -1006,6 +1010,9 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
                 // Clear calculator display as if "AC" was pressed
                 clearButton(view)
+                // Reset failed attempts and lockout
+                failedPinAttempts = 0
+                pinLockoutEndTime = 0L
                 // Launch GalleryActivity to show notes/photos
                 val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
                 intent.putExtra("gallery_name", gallery.name)
@@ -1014,8 +1021,12 @@ class MainActivity : AppCompatActivity() {
                 startActivity(intent)
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
-                com.darkempire78.opencalculator.securegallery.PinAttemptManager.registerFailure()
-                addSymbol(view, "!")
+                failedPinAttempts++
+                if (failedPinAttempts >= 3) {
+                    pinLockoutEndTime = System.currentTimeMillis() + 3 * 60 * 1000 // 3 minutes
+                }
+                // Silently ignore further attempts if locked out
+                // No error message, just ignore
             }
         } else {
             android.util.Log.d("SecureGallery", "Factorial pressed. Not in pin entry mode or buffer empty.")
