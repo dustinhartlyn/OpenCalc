@@ -19,6 +19,8 @@ class GalleryActivity : AppCompatActivity() {
         const val PICK_IMAGES_REQUEST = 1001
     }
 
+    private var deleteDialog: android.app.AlertDialog? = null
+
     // Handler for Add Pictures menu item
     private fun addPicturesToGallery() {
         val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
@@ -65,9 +67,12 @@ class GalleryActivity : AppCompatActivity() {
             }
             // Add encrypted photos to gallery
             gallery.photos.addAll(encryptedPhotos)
+            // Save gallery data (this will persist the added photos)
+            GalleryManager.setContext(this)
+            GalleryManager.saveGalleries()
             // Prompt to delete originals
             if (originalPaths.isNotEmpty()) {
-                android.app.AlertDialog.Builder(this)
+                deleteDialog = android.app.AlertDialog.Builder(this)
                     .setTitle("Delete Original Photos?")
                     .setMessage("Do you want to delete the original photos from your device?")
                     .setPositiveButton("Delete") { _, _ ->
@@ -79,17 +84,36 @@ class GalleryActivity : AppCompatActivity() {
                             }
                         }
                         Toast.makeText(this, "Original photos deleted", Toast.LENGTH_SHORT).show()
+                        deleteDialog = null
+                        // Refresh gallery UI (reload photos)
+                        recreate()
                     }
-                    .setNegativeButton("Keep", null)
-                    .show()
+                    .setNegativeButton("Keep") { _, _ ->
+                        deleteDialog = null
+                        // Refresh gallery UI (reload photos)
+                        recreate()
+                    }
+                    .create()
+                deleteDialog?.show()
+            } else {
+                // Refresh gallery UI (reload photos) if no deletion prompt
+                recreate()
             }
-            // Refresh gallery UI (reload photos)
-            recreate()
         }
     }
+
+    override fun onDestroy() {
+        deleteDialog?.dismiss()
+        deleteDialog = null
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
+
+        // Initialize GalleryManager context
+        GalleryManager.setContext(this)
 
         // Enable swipe-to-go-back gesture
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
@@ -109,8 +133,11 @@ class GalleryActivity : AppCompatActivity() {
         }
 
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
-        val notes = intent.getSerializableExtra("gallery_notes") as? ArrayList<SecureNote> ?: arrayListOf()
-        val photos = intent.getSerializableExtra("gallery_photos") as? ArrayList<String> ?: arrayListOf()
+        
+        // Get gallery data from GalleryManager instead of Intent
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        val notes = gallery?.notes ?: mutableListOf()
+        val photos = gallery?.photos ?: mutableListOf()
 
         findViewById<android.widget.TextView>(R.id.galleryTitle).text = galleryName
 
@@ -148,6 +175,39 @@ class GalleryActivity : AppCompatActivity() {
             override fun getItemCount() = decryptedNotes.size
             override fun onBindViewHolder(holder: NoteViewHolder, position: Int) {
                 holder.bind(decryptedNotes[position].first, decryptedNotes[position].second)
+            }
+        }
+
+        // Setup photos RecyclerView
+        val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
+        photosRecyclerView.layoutManager = LinearLayoutManager(this)
+        
+        // Decrypt and display photos
+        val decryptedPhotos = photos.mapNotNull { photo ->
+            if (key != null) {
+                try {
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                    Triple(photo.name, photo.date, decryptedBytes)
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
+                    null
+                }
+            } else {
+                null
+            }
+        }
+        
+        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(android.R.layout.simple_list_item_2, parent, false)
+                return PhotoViewHolder(v)
+            }
+            override fun getItemCount() = decryptedPhotos.size
+            override fun onBindViewHolder(holder: PhotoViewHolder, position: Int) {
+                val photo = decryptedPhotos[position]
+                holder.bind(photo.first, "Size: ${photo.third.size} bytes")
             }
         }
 
@@ -209,8 +269,6 @@ class GalleryActivity : AppCompatActivity() {
                     // Close current and open new gallery
                     val intent = intent
                     intent.putExtra("gallery_name", name)
-                    intent.putExtra("gallery_notes", ArrayList<SecureNote>())
-                    intent.putExtra("gallery_photos", ArrayList<String>())
                     finish()
                     startActivity(intent)
                 } else {
@@ -297,6 +355,15 @@ class GalleryActivity : AppCompatActivity() {
             val bodyView = itemView.findViewById<android.widget.TextView>(android.R.id.text2)
             titleView.text = title
             bodyView.text = body
+        }
+    }
+    
+    class PhotoViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
+        fun bind(name: String, info: String) {
+            val nameView = itemView.findViewById<android.widget.TextView>(android.R.id.text1)
+            val infoView = itemView.findViewById<android.widget.TextView>(android.R.id.text2)
+            nameView.text = name
+            infoView.text = info
         }
     }
 }

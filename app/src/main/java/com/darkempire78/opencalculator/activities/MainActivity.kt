@@ -119,6 +119,10 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // --- Secure Gallery: Initialize and load galleries ---
+        GalleryManager.setContext(this)
+        GalleryManager.loadGalleries()
+        
         // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
         try {
             if (GalleryManager.getGalleries().isEmpty()) {
@@ -146,6 +150,7 @@ class MainActivity : AppCompatActivity() {
                     photos = mutableListOf()
                 )
                 GalleryManager.addGallery(newGallery)
+                GalleryManager.saveGalleries()
                 android.util.Log.d("SecureGallery", "Default gallery created with pin 1111 and fixed salt.")
             }
         } catch (e: Exception) {
@@ -1017,8 +1022,6 @@ class MainActivity : AppCompatActivity() {
                 // Launch GalleryActivity to show notes/photos
                 val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
                 intent.putExtra("gallery_name", gallery.name)
-                intent.putExtra("gallery_notes", ArrayList(gallery.notes))
-                intent.putExtra("gallery_photos", ArrayList(gallery.photos))
                 startActivity(intent)
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")

@@ -1,6 +1,7 @@
 package com.darkempire78.opencalculator.securegallery
 
 import java.util.UUID
+import java.io.Serializable
 
 // Data model for an encrypted photo
 class SecurePhoto(
@@ -8,4 +9,4 @@ class SecurePhoto(
     val encryptedData: ByteArray,
     val name: String,
     val date: Long
-)
+) : Serializable

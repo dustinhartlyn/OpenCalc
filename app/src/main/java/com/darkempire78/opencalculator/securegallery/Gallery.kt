@@ -1,6 +1,7 @@
 package com.darkempire78.opencalculator.securegallery
 
 import java.util.UUID
+import java.io.Serializable
 
 // Data model for a secure gallery
 class Gallery(
@@ -9,4 +10,4 @@ class Gallery(
     val salt: ByteArray,
     val notes: MutableList<SecureNote> = mutableListOf(),
     val photos: MutableList<SecurePhoto> = mutableListOf()
-)
+) : Serializable

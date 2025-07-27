@@ -1,8 +1,18 @@
 package com.darkempire78.opencalculator.securegallery
 
 import java.util.UUID
+import android.content.Context
+import java.io.File
+import java.io.ObjectOutputStream
+import java.io.ObjectInputStream
 
 object GalleryManager {
+    private val galleries = mutableListOf<Gallery>()
+    private var applicationContext: Context? = null
+
+    fun setContext(context: Context) {
+        applicationContext = context
+    }
     // Create a new gallery with a pin and name
     fun createGallery(pin: String, name: String): Boolean {
         if (getGalleries().any { it.name == name }) {
@@ -29,6 +39,7 @@ object GalleryManager {
             photos = mutableListOf()
         )
         addGallery(newGallery)
+        saveGalleries()
         android.util.Log.d("SecureGallery", "Gallery created: $name with pin $pin")
         return true
     }
@@ -45,6 +56,7 @@ object GalleryManager {
             return false
         }
         gallery.name = newName
+        saveGalleries()
         android.util.Log.d("SecureGallery", "Gallery renamed to $newName")
         return true
     }
@@ -57,6 +69,7 @@ object GalleryManager {
             return false
         }
         galleries.remove(gallery)
+        saveGalleries()
         android.util.Log.d("SecureGallery", "Gallery deleted: ${gallery.name}")
         return true
     }
@@ -96,5 +109,37 @@ object GalleryManager {
 
     fun removeGallery(id: UUID) {
         galleries.removeAll { it.id == id }
+        saveGalleries()
+    }
+
+    fun saveGalleries() {
+        val context = applicationContext ?: return
+        try {
+            val file = File(context.filesDir, "galleries.dat")
+            ObjectOutputStream(file.outputStream()).use { oos ->
+                oos.writeObject(galleries.toList())
+            }
+            android.util.Log.d("SecureGallery", "Galleries saved successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Failed to save galleries", e)
+        }
+    }
+
+    fun loadGalleries() {
+        val context = applicationContext ?: return
+        try {
+            val file = File(context.filesDir, "galleries.dat")
+            if (file.exists()) {
+                ObjectInputStream(file.inputStream()).use { ois ->
+                    @Suppress("UNCHECKED_CAST")
+                    val loadedGalleries = ois.readObject() as List<Gallery>
+                    galleries.clear()
+                    galleries.addAll(loadedGalleries)
+                    android.util.Log.d("SecureGallery", "Galleries loaded successfully: ${galleries.size} galleries")
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Failed to load galleries", e)
+        }
     }
 }
