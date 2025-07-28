@@ -346,6 +346,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         deleteDialog?.dismiss()
         deleteDialog = null
         cleanupSecurity()
+        // Clear PIN from memory when gallery is destroyed
+        TempPinHolder.clear()
         super.onDestroy()
     }
     
@@ -364,6 +366,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         isActivityVisible = true
         // Reset security trigger when activity becomes visible again after being paused
         // This ensures security works again after each legitimate return to gallery
+        android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
         TempPinHolder.clearSecurityTrigger()
     }
     
@@ -382,6 +385,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         screenOffReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                    android.util.Log.d("SecureGallery", "Screen off detected, calling closeGalleryForSecurity()")
                     closeGalleryForSecurity()
                 }
             }
@@ -407,9 +411,15 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     private fun closeGalleryForSecurity() {
+        android.util.Log.d("SecureGallery", "closeGalleryForSecurity called, securityTriggered=${TempPinHolder.securityTriggered}")
         if (!TempPinHolder.securityTriggered) {
+            android.util.Log.d("SecureGallery", "Security not already triggered, setting flag and finishing activity")
             TempPinHolder.securityTriggered = true
+            // Clear PIN from memory for security
+            TempPinHolder.clear()
             finish() // Close gallery and return to calculator
+        } else {
+            android.util.Log.d("SecureGallery", "Security already triggered, ignoring call")
         }
     }
     
