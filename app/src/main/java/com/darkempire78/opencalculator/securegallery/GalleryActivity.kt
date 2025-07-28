@@ -221,6 +221,8 @@ class GalleryActivity : AppCompatActivity() {
         toolbar.setNavigationOnClickListener {
             showCustomGalleryMenu()
         }
+    }
+
     override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
         menuInflater.inflate(R.menu.gallery_menu, menu)
         return true
@@ -358,10 +360,13 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     class PhotoThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(imageBytes: ByteArray) {
+        fun bind(bitmap: android.graphics.Bitmap?) {
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.photoThumbnail)
-            val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-            imageView.setImageBitmap(bitmap)
+            if (bitmap != null) {
+                imageView.setImageBitmap(bitmap)
+            } else {
+                imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+            }
         }
     }
 }
