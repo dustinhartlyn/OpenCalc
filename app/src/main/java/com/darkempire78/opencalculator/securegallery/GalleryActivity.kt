@@ -345,6 +345,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
 
     override fun onDestroy() {
+        android.util.Log.d("SecureGallery", "GalleryActivity onDestroy() called")
         deleteDialog?.dismiss()
         deleteDialog = null
         cleanupSecurity()
@@ -404,9 +405,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         screenOffReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                    android.util.Log.d("SecureGallery", "Screen off detected, calling closeGalleryForSecurity()")
-                    isScreenOff = true
-                    closeGalleryForSecurity()
+                    val timeSinceStart = System.currentTimeMillis() - activityStartTime
+                    if (timeSinceStart > 2000) {
+                        android.util.Log.d("SecureGallery", "Screen off detected after grace period (${timeSinceStart}ms), triggering security")
+                        isScreenOff = true
+                        closeGalleryForSecurity()
+                    } else {
+                        android.util.Log.d("SecureGallery", "Screen off detected during grace period (${timeSinceStart}ms), ignoring")
+                    }
                 }
             }
         }
@@ -458,8 +464,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             
             // Check if phone is face down (Z-axis negative with significant magnitude)
             // Threshold of -8.0 for face down detection (gravity is ~9.8, allowing for some tolerance)
-            if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
+            // ALSO apply startup grace period to prevent false triggers during activity startup
+            val timeSinceStart = System.currentTimeMillis() - activityStartTime
+            if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0 && timeSinceStart > 2000) {
+                android.util.Log.d("SecureGallery", "Face down detected after grace period (${timeSinceStart}ms), triggering security")
                 closeGalleryForSecurity()
+            } else if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
+                android.util.Log.d("SecureGallery", "Face down detected during grace period (${timeSinceStart}ms), ignoring")
             }
         }
     }
@@ -470,10 +481,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        android.util.Log.d("SecureGallery", "GalleryActivity onCreate() started")
         setContentView(R.layout.activity_gallery)
 
         // Record activity start time for startup grace period
         activityStartTime = System.currentTimeMillis()
+        android.util.Log.d("SecureGallery", "Activity start time recorded: $activityStartTime")
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
@@ -729,6 +742,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         cancelNotesButton.setOnClickListener {
             exitNoteDeleteMode()
         }
+        
+        android.util.Log.d("SecureGallery", "GalleryActivity onCreate() completed successfully")
     }
 
 
