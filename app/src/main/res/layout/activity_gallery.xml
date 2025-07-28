@@ -1,128 +1,136 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="#424242">
-
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/galleryToolbar"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:background="#424242"
-        android:popupTheme="@style/ThemeOverlay.AppCompat.Light"
-        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
-        
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="end"
-            android:orientation="horizontal">
-            
-            <Button
-                android:id="@+id/deleteButton"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="Delete"
-                android:textSize="14sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone"
-                android:backgroundTint="#D32F2F"
-                android:textColor="@android:color/white" />
-            
-            <Button
-                android:id="@+id/cancelButton"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:text="Cancel"
-                android:textSize="14sp"
-                android:paddingStart="12dp"
-                android:paddingEnd="12dp"
-                android:layout_marginEnd="8dp"
-                android:visibility="gone"
-                android:backgroundTint="#757575"
-                android:textColor="@android:color/white" />
-                
-        </LinearLayout>
-        
-    </androidx.appcompat.widget.Toolbar>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/photosRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="3"
-        android:background="#424242"
-        android:padding="2dp" />
+    android:background="#424242"
+    android:fillViewport="true">
 
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="2"
-        android:orientation="vertical"
-        android:background="#616161"
-        android:padding="8dp">
-        
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/galleryToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="48dp"
+            android:background="#424242"
+            android:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
+            
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end"
+                android:orientation="horizontal">
+                
+                <Button
+                    android:id="@+id/deleteButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="Delete"
+                    android:textSize="14sp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginEnd="8dp"
+                    android:visibility="gone"
+                    android:backgroundTint="#D32F2F"
+                    android:textColor="@android:color/white" />
+                
+                <Button
+                    android:id="@+id/cancelButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="36dp"
+                    android:text="Cancel"
+                    android:textSize="14sp"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="12dp"
+                    android:layout_marginEnd="8dp"
+                    android:visibility="gone"
+                    android:backgroundTint="#757575"
+                    android:textColor="@android:color/white" />
+                    
+            </LinearLayout>
+            
+        </androidx.appcompat.widget.Toolbar>
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/photosRecyclerView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="#424242"
+            android:padding="2dp"
+            android:nestedScrollingEnabled="false"
+            android:minHeight="400dp" />
+
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal">
+            android:orientation="vertical"
+            android:background="#616161"
+            android:padding="8dp">
             
-            <TextView
-                android:layout_width="0dp"
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Notes"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@android:color/white"
-                android:paddingBottom="8dp" />
+                android:orientation="horizontal">
                 
-            <Button
-                android:id="@+id/deleteNotesButton"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:text="Delete"
-                android:textSize="12sp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:layout_marginEnd="4dp"
-                android:visibility="gone"
-                android:backgroundTint="#D32F2F"
-                android:textColor="@android:color/white" />
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Notes"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@android:color/white"
+                    android:paddingBottom="8dp" />
+                    
+                <Button
+                    android:id="@+id/deleteNotesButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:text="Delete"
+                    android:textSize="12sp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:layout_marginEnd="4dp"
+                    android:visibility="gone"
+                    android:backgroundTint="#D32F2F"
+                    android:textColor="@android:color/white" />
+                
+                <Button
+                    android:id="@+id/cancelNotesButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="32dp"
+                    android:text="Cancel"
+                    android:textSize="12sp"
+                    android:paddingStart="8dp"
+                    android:paddingEnd="8dp"
+                    android:visibility="gone"
+                    android:backgroundTint="#757575"
+                    android:textColor="@android:color/white" />
+                    
+            </LinearLayout>
             
-            <Button
-                android:id="@+id/cancelNotesButton"
-                android:layout_width="wrap_content"
-                android:layout_height="32dp"
-                android:text="Cancel"
-                android:textSize="12sp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:visibility="gone"
-                android:backgroundTint="#757575"
-                android:textColor="@android:color/white" />
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/notesRecyclerView"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:nestedScrollingEnabled="false"
+                android:minHeight="150dp" />
                 
-        </LinearLayout>
+            <Button
+                android:id="@+id/addNoteButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="+ Add Note"
+                android:textSize="16sp"
+                android:layout_marginTop="8dp"
+                android:backgroundTint="#4CAF50"
+                android:textColor="@android:color/white" />
         
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/notesRecyclerView"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
-            
-        <Button
-            android:id="@+id/addNoteButton"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="+ Add Note"
-            android:textSize="16sp"
-            android:layout_marginTop="8dp"
-            android:backgroundTint="#4CAF50"
-            android:textColor="@android:color/white" />
-    
+        </LinearLayout>
+
     </LinearLayout>
 
-</LinearLayout>
+</ScrollView>

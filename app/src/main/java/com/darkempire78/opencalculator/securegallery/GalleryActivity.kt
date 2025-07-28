@@ -517,29 +517,7 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
 
-    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
-        menuInflater.inflate(R.menu.gallery_menu, menu)
-        return true
-    }
 
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
-        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
-        return when (item.itemId) {
-            R.id.action_create_gallery -> {
-                showCreateGalleryDialog()
-                true
-            }
-            R.id.action_rename_gallery -> {
-                showRenameGalleryDialog(galleryName)
-                true
-            }
-            R.id.action_delete_gallery -> {
-                showDeleteGalleryDialog(galleryName)
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
 
     // Dialog for creating a gallery
     private fun showCreateGalleryDialog() {
@@ -840,35 +818,35 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun showOrganizeModeToolbar() {
-        // Create a simple toolbar with Done button
-        val toolbar = findViewById<android.widget.LinearLayout>(R.id.organizeToolbar)
-            ?: run {
-                val newToolbar = android.widget.LinearLayout(this)
-                newToolbar.id = R.id.organizeToolbar
-                newToolbar.orientation = android.widget.LinearLayout.HORIZONTAL
-                newToolbar.setBackgroundColor(0xFF2196F3.toInt()) // Blue background
-                
-                val doneButton = android.widget.Button(this)
-                doneButton.text = "Done"
-                doneButton.setTextColor(android.graphics.Color.WHITE)
-                doneButton.setBackgroundColor(0xFF1976D2.toInt()) // Darker blue
-                doneButton.setOnClickListener { exitOrganizeMode() }
-                
-                newToolbar.addView(doneButton)
-                
-                // Add to main layout
-                val mainLayout = findViewById<android.widget.LinearLayout>(R.id.mainLayout)
-                mainLayout?.addView(newToolbar, 0) // Add at the top
-                
-                newToolbar
-            }
+        // Add the Done button to the existing toolbar
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
         
-        toolbar.visibility = android.view.View.VISIBLE
+        // Create done button
+        val doneButton = android.widget.Button(this)
+        doneButton.id = android.view.View.generateViewId()
+        doneButton.text = "Done"
+        doneButton.setTextColor(android.graphics.Color.WHITE)
+        doneButton.setBackgroundColor(0xFF4CAF50.toInt()) // Green background
+        doneButton.setOnClickListener { exitOrganizeMode() }
+        
+        // Add done button to toolbar
+        val layoutParams = androidx.appcompat.widget.Toolbar.LayoutParams(
+            androidx.appcompat.widget.Toolbar.LayoutParams.WRAP_CONTENT,
+            androidx.appcompat.widget.Toolbar.LayoutParams.WRAP_CONTENT
+        )
+        layoutParams.gravity = android.view.Gravity.END
+        doneButton.layoutParams = layoutParams
+        
+        toolbar.addView(doneButton)
     }
     
     private fun hideOrganizeModeToolbar() {
-        val toolbar = findViewById<android.widget.LinearLayout>(R.id.organizeToolbar)
-        toolbar?.visibility = android.view.View.GONE
+        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
+        // Remove any added views (the Done button)
+        val childCount = toolbar.childCount
+        if (childCount > 1) { // Keep the first child (the default content)
+            toolbar.removeViewAt(childCount - 1)
+        }
     }
     
     private fun saveCustomOrder() {
