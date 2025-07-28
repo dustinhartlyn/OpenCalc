@@ -57,6 +57,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var isActivityVisible = true
     private var screenOffReceiver: BroadcastReceiver? = null
     private var isPhotoPickerActive = false
+    private var isRecreating = false
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -182,12 +183,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                     deleteDialog = null
                     // Refresh gallery UI (reload photos)
-                    recreate()
+                    safeRecreate()
                 }
                 .setNegativeButton("Keep") { _, _ ->
                     deleteDialog = null
                     // Refresh gallery UI (reload photos)
-                    recreate()
+                    safeRecreate()
                 }
                 .create()
             deleteDialog?.show()
@@ -200,7 +201,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 Toast.makeText(this, "Photos imported successfully. Original photos remain in your gallery.", Toast.LENGTH_LONG).show()
             }
             // Refresh gallery UI (reload photos)
-            recreate()
+            safeRecreate()
         }
     }
 
@@ -255,7 +256,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Exit delete mode and refresh UI
         exitDeleteMode()
-        recreate()
+        safeRecreate()
     }
     
     private fun enterNoteDeleteMode() {
@@ -314,7 +315,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 }
                 
                 GalleryManager.saveGalleries()
-                recreate() // Refresh the activity to show updated notes
+                safeRecreate() // Refresh the activity to show updated notes
             } catch (e: Exception) {
                 android.util.Log.e("SecureGallery", "Failed to encrypt note", e)
             }
@@ -338,7 +339,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Exit delete mode and refresh UI
         exitNoteDeleteMode()
-        recreate()
+        safeRecreate()
     }
 
     override fun onDestroy() {
@@ -352,8 +353,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         super.onPause()
         isActivityVisible = false
         // Security feature: close gallery when app loses focus
-        // BUT don't close if photo picker is active
-        if (!isPhotoPickerActive) {
+        // BUT don't close if photo picker is active or we're recreating the activity
+        if (!isPhotoPickerActive && !isRecreating) {
             closeGalleryForSecurity()
         }
     }
@@ -410,6 +411,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
     }
     
+    // Safe recreation that doesn't trigger security closure
+    private fun safeRecreate() {
+        isRecreating = true
+        recreate()
+    }
+    
     // SensorEventListener implementation for accelerometer
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
@@ -441,6 +448,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Clear security trigger since we successfully entered the gallery
         TempPinHolder.clearSecurityTrigger()
+        
+        // Reset recreation flag
+        isRecreating = false
 
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
         
@@ -930,7 +940,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         
         GalleryManager.saveGalleries()
-        recreate() // Refresh to show new order
+        safeRecreate() // Refresh to show new order
     }
     
     // Organize Mode Functions
