@@ -2,6 +2,17 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/action_add_pictures" android:title="Add Pictures" android:showAsAction="never" />
     <item android:id="@+id/action_add_note" android:title="Add Note" android:showAsAction="never" />
+    
+    <!-- Sort Options Submenu -->
+    <item android:id="@+id/action_sort_options" android:title="Sort Options" android:showAsAction="never">
+        <menu>
+            <item android:id="@+id/action_sort_by_name" android:title="By Name" android:showAsAction="never" />
+            <item android:id="@+id/action_sort_by_date" android:title="By Date" android:showAsAction="never" />
+            <item android:id="@+id/action_sort_custom" android:title="Custom Order" android:showAsAction="never" />
+            <item android:id="@+id/action_organize_photos" android:title="Organize Photos" android:showAsAction="never" />
+        </menu>
+    </item>
+    
     <item android:id="@+id/action_create_gallery" android:title="Create Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_rename_gallery" android:title="Rename Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_delete_gallery" android:title="Delete Gallery" android:showAsAction="never" />

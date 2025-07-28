@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.recyclerview.widget.ItemTouchHelper
 import com.darkempire78.opencalculator.R
 import androidx.appcompat.widget.PopupMenu
 
@@ -30,6 +31,10 @@ class GalleryActivity : AppCompatActivity() {
     private var isNoteDeleteMode = false
     private val selectedNotesForDeletion = mutableSetOf<Int>()
     private var notesAdapter: RecyclerView.Adapter<NoteViewHolder>? = null
+    
+    // Organize mode for drag-and-drop reordering
+    private var isOrganizeMode = false
+    private var organizePhotos = mutableListOf<android.graphics.Bitmap?>()
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -291,6 +296,11 @@ class GalleryActivity : AppCompatActivity() {
         val notes = gallery?.notes ?: mutableListOf()
         val photos = gallery?.photos ?: mutableListOf()
 
+        // Apply sort order to photos
+        if (gallery != null) {
+            GallerySortUtils.applySortOrder(gallery)
+        }
+
         // Decrypt notes using pin and salt
         val pin = TempPinHolder.pin ?: ""
         val salt = GalleryManager.getGalleries().find { it.name == galleryName }?.salt
@@ -391,9 +401,20 @@ class GalleryActivity : AppCompatActivity() {
             }
             override fun getItemCount() = decryptedPhotos.size
             override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
-                holder.bind(decryptedPhotos[position], isDeleteMode, selectedPhotosForDeletion.contains(position))
+                // Use organize photos if in organize mode, otherwise use decrypted photos
+                val bitmap = if (isOrganizeMode && position < organizePhotos.size) {
+                    organizePhotos[position]
+                } else {
+                    decryptedPhotos[position]
+                }
                 
-                if (isDeleteMode) {
+                holder.bind(bitmap, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                
+                if (isOrganizeMode) {
+                    // In organize mode, disable clicks (only allow drag)
+                    holder.itemView.setOnClickListener(null)
+                    holder.itemView.setOnLongClickListener(null)
+                } else if (isDeleteMode) {
                     // In delete mode, clicking toggles selection
                     holder.itemView.setOnClickListener {
                         if (selectedPhotosForDeletion.contains(position)) {
@@ -434,6 +455,9 @@ class GalleryActivity : AppCompatActivity() {
         }
         
         photosRecyclerView.adapter = photosAdapter
+
+        // Add drag-and-drop support for organize mode
+        setupDragAndDrop(photosRecyclerView)
 
         // Removed toast: Opened $galleryName with ... notes and ... photos
 
@@ -594,6 +618,7 @@ class GalleryActivity : AppCompatActivity() {
         // Only show normal menu items, delete mode is handled by dedicated buttons
         val menuItems = listOf(
             Pair("Add Pictures", R.id.action_add_pictures),
+            Pair("Sort Options", -1), // Special submenu item
             Pair("Create Gallery", R.id.action_create_gallery),
             Pair("Rename Gallery", R.id.action_rename_gallery),
             Pair("Delete Gallery", R.id.action_delete_gallery)
@@ -614,6 +639,12 @@ class GalleryActivity : AppCompatActivity() {
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
+                    -1 -> {
+                        dialog.dismiss()
+                        showSortOptionsMenu()
+                        return@setOnClickListener
+                    }
+                }
                 }
                 dialog.dismiss()
             }
@@ -654,7 +685,7 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     class PhotoThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(bitmap: android.graphics.Bitmap?, isDeleteMode: Boolean = false, isSelected: Boolean = false) {
+        fun bind(bitmap: android.graphics.Bitmap?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.photoThumbnail)
             if (bitmap != null) {
                 imageView.setImageBitmap(bitmap)
@@ -672,11 +703,248 @@ class GalleryActivity : AppCompatActivity() {
                     itemView.alpha = 1.0f
                     itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
                 }
+            } else if (isOrganizeMode) {
+                // Add a slight green overlay for organize mode
+                itemView.alpha = 0.9f
+                itemView.setBackgroundColor(0x4400FF00.toInt()) // Semi-transparent green
             } else {
                 // Normal mode - remove any overlays
                 itemView.alpha = 1.0f
                 itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
             }
         }
+    }
+    
+    // Sort Options Menu Functions
+    private fun showSortOptionsMenu() {
+        val dialog = Dialog(this)
+        
+        val sortOptions = listOf(
+            Pair("By Name", GallerySortOrder.NAME),
+            Pair("By Date", GallerySortOrder.DATE),
+            Pair("Custom Order", GallerySortOrder.CUSTOM),
+            Pair("Organize Photos", null) // Special organize mode option
+        )
+        
+        val container = android.widget.LinearLayout(this)
+        container.orientation = android.widget.LinearLayout.VERTICAL
+        container.setBackgroundColor(android.graphics.Color.WHITE)
+        
+        for ((title, sortOrder) in sortOptions) {
+            val itemView = LayoutInflater.from(this).inflate(R.layout.custom_popup_menu_item, container, false)
+            val textView = itemView.findViewById<TextView>(R.id.menuItemText)
+            textView.text = title
+            textView.setOnClickListener {
+                if (sortOrder != null) {
+                    applySortOrder(sortOrder)
+                } else {
+                    enterOrganizeMode()
+                }
+                dialog.dismiss()
+            }
+            container.addView(itemView)
+        }
+        
+        dialog.setContentView(container)
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dialog.show()
+    }
+    
+    private fun applySortOrder(sortOrder: GallerySortOrder) {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        gallery.sortOrder = sortOrder
+        
+        when (sortOrder) {
+            GallerySortOrder.NAME -> {
+                GallerySortUtils.sortPhotosByName(gallery.photos)
+                Toast.makeText(this, "Photos sorted by name", Toast.LENGTH_SHORT).show()
+            }
+            GallerySortOrder.DATE -> {
+                GallerySortUtils.sortPhotosByDate(gallery.photos)
+                Toast.makeText(this, "Photos sorted by date", Toast.LENGTH_SHORT).show()
+            }
+            GallerySortOrder.CUSTOM -> {
+                if (gallery.customOrder.isNotEmpty()) {
+                    GallerySortUtils.sortPhotosByCustomOrder(gallery.photos, gallery.customOrder)
+                    Toast.makeText(this, "Photos sorted by custom order", Toast.LENGTH_SHORT).show()
+                } else {
+                    // Initialize custom order with current order
+                    gallery.customOrder = (0 until gallery.photos.size).toMutableList()
+                    Toast.makeText(this, "Custom order initialized", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+        
+        GalleryManager.saveGalleries()
+        recreate() // Refresh to show new order
+    }
+    
+    // Organize Mode Functions
+    private fun enterOrganizeMode() {
+        isOrganizeMode = true
+        
+        // Store current decrypted photos for organize mode
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
+        
+        organizePhotos.clear()
+        organizePhotos.addAll(gallery.photos.map { photo ->
+            if (key != null) {
+                try {
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        })
+        
+        // Change action bar title
+        supportActionBar?.title = "Organize Photos - Hold & Drag to Reorder"
+        
+        // Show organize mode instructions
+        Toast.makeText(this, "Hold and drag photos to reorder. Tap 'Done' when finished.", Toast.LENGTH_LONG).show()
+        
+        // Add organize mode toolbar with Done button
+        showOrganizeModeToolbar()
+        
+        // Refresh adapter to enable drag functionality
+        recreatePhotosAdapter()
+    }
+    
+    private fun exitOrganizeMode() {
+        isOrganizeMode = false
+        
+        // Restore original title
+        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+        supportActionBar?.title = galleryName
+        
+        // Hide organize mode toolbar
+        hideOrganizeModeToolbar()
+        
+        // Save the new custom order
+        saveCustomOrder()
+        
+        // Refresh adapter to disable drag functionality
+        recreatePhotosAdapter()
+        
+        Toast.makeText(this, "Photo order saved", Toast.LENGTH_SHORT).show()
+    }
+    
+    private fun showOrganizeModeToolbar() {
+        // Create a simple toolbar with Done button
+        val toolbar = findViewById<android.widget.LinearLayout>(R.id.organizeToolbar)
+            ?: run {
+                val newToolbar = android.widget.LinearLayout(this)
+                newToolbar.id = R.id.organizeToolbar
+                newToolbar.orientation = android.widget.LinearLayout.HORIZONTAL
+                newToolbar.setBackgroundColor(0xFF2196F3.toInt()) // Blue background
+                
+                val doneButton = android.widget.Button(this)
+                doneButton.text = "Done"
+                doneButton.setTextColor(android.graphics.Color.WHITE)
+                doneButton.setBackgroundColor(0xFF1976D2.toInt()) // Darker blue
+                doneButton.setOnClickListener { exitOrganizeMode() }
+                
+                newToolbar.addView(doneButton)
+                
+                // Add to main layout
+                val mainLayout = findViewById<android.widget.LinearLayout>(R.id.mainLayout)
+                mainLayout?.addView(newToolbar, 0) // Add at the top
+                
+                newToolbar
+            }
+        
+        toolbar.visibility = android.view.View.VISIBLE
+    }
+    
+    private fun hideOrganizeModeToolbar() {
+        val toolbar = findViewById<android.widget.LinearLayout>(R.id.organizeToolbar)
+        toolbar?.visibility = android.view.View.GONE
+    }
+    
+    private fun saveCustomOrder() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        // Update gallery sort order to custom and save current photo order
+        gallery.sortOrder = GallerySortOrder.CUSTOM
+        gallery.customOrder = (0 until gallery.photos.size).toMutableList()
+        
+        GalleryManager.saveGalleries()
+    }
+    
+    private fun recreatePhotosAdapter() {
+        // This will be called to refresh the photos adapter with or without drag functionality
+        // The actual drag-and-drop implementation will be added to the adapter creation
+        val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
+        photosAdapter?.let { adapter ->
+            photosRecyclerView.adapter = null
+            photosRecyclerView.adapter = adapter
+        }
+    }
+    
+    private fun setupDragAndDrop(recyclerView: RecyclerView) {
+        val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
+            ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
+            0 // No swipe to delete in organize mode
+        ) {
+            override fun onMove(
+                recyclerView: RecyclerView,
+                viewHolder: RecyclerView.ViewHolder,
+                target: RecyclerView.ViewHolder
+            ): Boolean {
+                // Only allow drag in organize mode
+                if (!isOrganizeMode) return false
+                
+                val fromPosition = viewHolder.adapterPosition
+                val toPosition = target.adapterPosition
+                
+                // Move item in the gallery photos list
+                val galleryName = intent.getStringExtra("gallery_name") ?: return false
+                val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return false
+                
+                if (fromPosition < gallery.photos.size && toPosition < gallery.photos.size) {
+                    val item = gallery.photos.removeAt(fromPosition)
+                    gallery.photos.add(toPosition, item)
+                    
+                    // Also move the decrypted bitmap
+                    val bitmap = organizePhotos.removeAt(fromPosition)
+                    organizePhotos.add(toPosition, bitmap)
+                    
+                    // Notify adapter of the move
+                    photosAdapter?.notifyItemMoved(fromPosition, toPosition)
+                    
+                    return true
+                }
+                
+                return false
+            }
+            
+            override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
+                // No swipe functionality in organize mode
+            }
+            
+            override fun isLongPressDragEnabled(): Boolean {
+                // Only enable drag in organize mode
+                return isOrganizeMode
+            }
+            
+            override fun isItemViewSwipeEnabled(): Boolean {
+                // Disable swipe when in organize mode
+                return false
+            }
+        })
+        
+        itemTouchHelper.attachToRecyclerView(recyclerView)
     }
 }

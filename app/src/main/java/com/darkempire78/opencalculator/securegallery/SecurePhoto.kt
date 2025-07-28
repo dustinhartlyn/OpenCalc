@@ -8,5 +8,6 @@ class SecurePhoto(
     val id: UUID = UUID.randomUUID(),
     val encryptedData: ByteArray,
     val name: String,
-    val date: Long
+    val date: Long,
+    var customOrder: Int = -1 // For custom sorting, -1 means not set
 ) : Serializable

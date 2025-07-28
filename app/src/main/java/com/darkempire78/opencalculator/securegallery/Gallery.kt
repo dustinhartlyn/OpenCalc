@@ -10,5 +10,7 @@ class Gallery(
     val salt: ByteArray,
     val notes: MutableList<SecureNote> = mutableListOf(),
     val photos: MutableList<SecurePhoto> = mutableListOf(),
-    var pinHash: ByteArray? = null // Secure PIN verification hash
+    var pinHash: ByteArray? = null, // Secure PIN verification hash
+    var sortOrder: GallerySortOrder = GallerySortOrder.NAME, // Photo sort order
+    var customOrder: MutableList<Int> = mutableListOf() // Custom order indices
 ) : Serializable
