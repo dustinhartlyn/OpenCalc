@@ -121,6 +121,10 @@ class GalleryActivity : AppCompatActivity() {
         // Update the action bar
         supportActionBar?.title = "Select photos to delete"
         
+        // Show delete mode buttons
+        findViewById<android.widget.Button>(R.id.deleteButton).visibility = android.view.View.VISIBLE
+        findViewById<android.widget.Button>(R.id.cancelButton).visibility = android.view.View.VISIBLE
+        
         // Refresh the adapter to show checkboxes
         photosAdapter?.notifyDataSetChanged()
     }
@@ -132,6 +136,10 @@ class GalleryActivity : AppCompatActivity() {
         // Restore the original action bar title
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
         supportActionBar?.title = galleryName
+        
+        // Hide delete mode buttons
+        findViewById<android.widget.Button>(R.id.deleteButton).visibility = android.view.View.GONE
+        findViewById<android.widget.Button>(R.id.cancelButton).visibility = android.view.View.GONE
         
         // Refresh the adapter to hide checkboxes
         photosAdapter?.notifyDataSetChanged()
@@ -258,6 +266,11 @@ class GalleryActivity : AppCompatActivity() {
                             selectedPhotosForDeletion.add(position)
                         }
                         notifyItemChanged(position)
+                        
+                        // Auto-cancel delete mode if no photos are selected
+                        if (selectedPhotosForDeletion.isEmpty()) {
+                            exitDeleteMode()
+                        }
                     }
                     
                     // No long press needed in delete mode
@@ -313,6 +326,18 @@ class GalleryActivity : AppCompatActivity() {
         toolbar.setNavigationIcon(R.drawable.ic_menu_black_background)
         toolbar.setNavigationOnClickListener {
             showCustomGalleryMenu()
+        }
+        
+        // Setup delete mode buttons
+        val deleteButton = findViewById<android.widget.Button>(R.id.deleteButton)
+        val cancelButton = findViewById<android.widget.Button>(R.id.cancelButton)
+        
+        deleteButton.setOnClickListener {
+            deleteSelectedPhotos()
+        }
+        
+        cancelButton.setOnClickListener {
+            exitDeleteMode()
         }
     }
 
@@ -414,21 +439,13 @@ class GalleryActivity : AppCompatActivity() {
     private fun showCustomGalleryMenu() {
         val dialog = Dialog(this)
         
-        val menuItems = if (isDeleteMode) {
-            // Delete mode menu
-            listOf(
-                Pair("Delete Selected", R.id.action_delete_selected),
-                Pair("Cancel", R.id.action_cancel_delete)
-            )
-        } else {
-            // Normal mode menu
-            listOf(
-                Pair("Add Pictures", R.id.action_add_pictures),
-                Pair("Create Gallery", R.id.action_create_gallery),
-                Pair("Rename Gallery", R.id.action_rename_gallery),
-                Pair("Delete Gallery", R.id.action_delete_gallery)
-            )
-        }
+        // Only show normal menu items, delete mode is handled by dedicated buttons
+        val menuItems = listOf(
+            Pair("Add Pictures", R.id.action_add_pictures),
+            Pair("Create Gallery", R.id.action_create_gallery),
+            Pair("Rename Gallery", R.id.action_rename_gallery),
+            Pair("Delete Gallery", R.id.action_delete_gallery)
+        )
         
         val container = android.widget.LinearLayout(this)
         container.orientation = android.widget.LinearLayout.VERTICAL
@@ -445,8 +462,6 @@ class GalleryActivity : AppCompatActivity() {
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
-                    R.id.action_delete_selected -> deleteSelectedPhotos()
-                    R.id.action_cancel_delete -> exitDeleteMode()
                 }
                 dialog.dismiss()
             }
