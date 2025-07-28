@@ -83,14 +83,6 @@ object GalleryManager {
         android.util.Log.d("SecureGallery", "No gallery found with the provided pin")
         return null
     }
-                    }
-                } catch (e: Exception) {
-                    android.util.Log.d("SecureGallery", "Pin test failed for gallery '${gallery.name}': ${e.message}")
-                }
-            }
-        }
-        return null
-    }
 
     fun removeGallery(id: UUID) {
         galleries.removeAll { it.id == id }
