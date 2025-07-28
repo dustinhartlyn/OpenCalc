@@ -59,6 +59,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var isPhotoPickerActive = false
     private var isRecreating = false
     private var isScreenOff = false
+    private var activityStartTime = 0L
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -359,8 +360,10 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // BUT don't close if photo picker is active or we're recreating the activity
         // ALSO don't close if screen is off (let screen off receiver handle it to avoid duplicate triggers)
         // ALSO add a small delay to prevent immediate closure during activity startup
-        if (!isPhotoPickerActive && !isRecreating && !isScreenOff) {
-            android.util.Log.d("SecureGallery", "onPause called - scheduling delayed security check")
+        // ALSO ignore pauses within the first 2 seconds of activity creation (startup grace period)
+        val timeSinceStart = System.currentTimeMillis() - activityStartTime
+        if (!isPhotoPickerActive && !isRecreating && !isScreenOff && timeSinceStart > 2000) {
+            android.util.Log.d("SecureGallery", "onPause called - scheduling delayed security check (time since start: ${timeSinceStart}ms)")
             // Use a small delay to prevent immediate closure during activity startup
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 // Double-check that we're still paused and conditions haven't changed
@@ -372,7 +375,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 }
             }, 250) // 250ms delay to allow for brief lifecycle transitions
         } else {
-            android.util.Log.d("SecureGallery", "onPause called - NOT triggering security (photoPickerActive=$isPhotoPickerActive, recreating=$isRecreating, screenOff=$isScreenOff)")
+            android.util.Log.d("SecureGallery", "onPause called - NOT triggering security (photoPickerActive=$isPhotoPickerActive, recreating=$isRecreating, screenOff=$isScreenOff, timeSinceStart=${timeSinceStart}ms)")
         }
     }
     
@@ -468,6 +471,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
+
+        // Record activity start time for startup grace period
+        activityStartTime = System.currentTimeMillis()
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
