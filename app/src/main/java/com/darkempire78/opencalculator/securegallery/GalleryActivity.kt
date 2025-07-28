@@ -1169,9 +1169,10 @@ class GalleryActivity : AppCompatActivity() {
                         CryptoUtils.decrypt(iv, ct, legacyKey)
                     }
                     
-                    // Create file name with timestamp
-                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date(photo.date))
-                    val fileName = "exported_photo_${timestamp}_${index + 1}.jpg"
+                    // Create file name with incremented number and gallery name
+                    val paddedNumber = String.format("%03d", index + 1) // 001, 002, 003, etc.
+                    val sanitizedGalleryName = galleryName.replace(Regex("[^a-zA-Z0-9_-]"), "_") // Remove special characters
+                    val fileName = "${paddedNumber}_${sanitizedGalleryName}.jpg"
                     
                     // Create document
                     val newFileUri = DocumentsContract.createDocument(
