@@ -58,6 +58,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var screenOffReceiver: BroadcastReceiver? = null
     private var isPhotoPickerActive = false
     private var isRecreating = false
+    private var isScreenOff = false
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -356,14 +357,19 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         isActivityVisible = false
         // Security feature: close gallery when app loses focus
         // BUT don't close if photo picker is active or we're recreating the activity
-        if (!isPhotoPickerActive && !isRecreating) {
+        // ALSO don't close if screen is off (let screen off receiver handle it to avoid duplicate triggers)
+        if (!isPhotoPickerActive && !isRecreating && !isScreenOff) {
+            android.util.Log.d("SecureGallery", "onPause called - triggering security for app focus loss")
             closeGalleryForSecurity()
+        } else {
+            android.util.Log.d("SecureGallery", "onPause called - NOT triggering security (photoPickerActive=$isPhotoPickerActive, recreating=$isRecreating, screenOff=$isScreenOff)")
         }
     }
     
     override fun onResume() {
         super.onResume()
         isActivityVisible = true
+        isScreenOff = false // Reset screen off flag when activity resumes
         // Reset security trigger when activity becomes visible again after being paused
         // This ensures security works again after each legitimate return to gallery
         android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
@@ -386,6 +392,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                     android.util.Log.d("SecureGallery", "Screen off detected, calling closeGalleryForSecurity()")
+                    isScreenOff = true
                     closeGalleryForSecurity()
                 }
             }
@@ -415,7 +422,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         if (!TempPinHolder.securityTriggered) {
             android.util.Log.d("SecureGallery", "Security not already triggered, setting flag and finishing activity")
             TempPinHolder.securityTriggered = true
-            // Clear PIN from memory for security
+            // Clear PIN from memory for security - user must re-enter PIN to access gallery again
             TempPinHolder.clear()
             finish() // Close gallery and return to calculator
         } else {
