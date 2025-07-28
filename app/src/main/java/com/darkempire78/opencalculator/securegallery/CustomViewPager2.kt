@@ -39,6 +39,10 @@ class CustomViewPager2 @JvmOverloads constructor(
         viewPager2.setPageTransformer(transformer)
     }
 
+    fun setCurrentItem(item: Int, smoothScroll: Boolean) {
+        viewPager2.setCurrentItem(item, smoothScroll)
+    }
+
     fun registerOnPageChangeCallback(callback: ViewPager2.OnPageChangeCallback) {
         viewPager2.registerOnPageChangeCallback(callback)
     }
