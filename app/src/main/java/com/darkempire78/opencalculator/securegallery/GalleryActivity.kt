@@ -8,6 +8,7 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -17,9 +18,22 @@ import androidx.appcompat.widget.PopupMenu
 class GalleryActivity : AppCompatActivity() {
     companion object {
         const val PICK_IMAGES_REQUEST = 1001
+        const val PHOTO_VIEWER_REQUEST = 1002
     }
 
     private var deleteDialog: android.app.AlertDialog? = null
+    
+    // Activity result launcher for photo viewer
+    private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val returnPosition = result.data?.getIntExtra("return_position", -1) ?: -1
+            if (returnPosition >= 0) {
+                // Optionally scroll to the position in the gallery that was being viewed
+                val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
+                photosRecyclerView.scrollToPosition(returnPosition)
+            }
+        }
+    }
 
     // Handler for Add Pictures menu item
     private fun addPicturesToGallery() {
@@ -190,6 +204,16 @@ class GalleryActivity : AppCompatActivity() {
             override fun getItemCount() = decryptedPhotos.size
             override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
                 holder.bind(decryptedPhotos[position])
+                
+                // Set click listener to open full-screen photo viewer
+                holder.itemView.setOnClickListener {
+                    val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
+                    intent.putExtra("photos", ArrayList(photos))
+                    intent.putExtra("position", position)
+                    intent.putExtra("pin", pin)
+                    intent.putExtra("salt", salt)
+                    photoViewerLauncher.launch(intent)
+                }
             }
         }
 

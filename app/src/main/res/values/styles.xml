@@ -161,6 +161,13 @@
         <item name="android:popupBackground">@drawable/rounded</item>
     </style>
 
-
+    <!-- Fullscreen theme for photo viewer -->
+    <style name="FullscreenTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowBackground">@android:color/black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 
 </resources>

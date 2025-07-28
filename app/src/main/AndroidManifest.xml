@@ -50,5 +50,10 @@
             android:name="com.darkempire78.opencalculator.securegallery.GalleryActivity"
             android:exported="false" />
 
+        <activity
+            android:name="com.darkempire78.opencalculator.securegallery.SecurePhotoViewerActivity"
+            android:exported="false"
+            android:theme="@style/FullscreenTheme" />
+
 </application>
 </manifest>

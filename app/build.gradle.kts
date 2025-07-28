@@ -68,4 +68,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     implementation(libs.gson)
+    
+    // PhotoView for zoom and pan functionality
+    implementation("com.github.chrisbanes:PhotoView:2.3.0")
+    implementation("androidx.viewpager2:viewpager2:1.0.0")
 }
