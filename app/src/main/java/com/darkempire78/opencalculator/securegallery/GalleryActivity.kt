@@ -645,7 +645,6 @@ class GalleryActivity : AppCompatActivity() {
                         return@setOnClickListener
                     }
                 }
-                }
                 dialog.dismiss()
             }
             container.addView(itemView)
