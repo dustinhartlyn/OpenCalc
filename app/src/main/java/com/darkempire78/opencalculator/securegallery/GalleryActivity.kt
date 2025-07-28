@@ -1319,7 +1319,7 @@ class GalleryActivity : AppCompatActivity() {
             newGallery.notes.addAll(importData.notes)
             
             // Add to gallery manager
-            GalleryManager.getGalleries().add(newGallery)
+            GalleryManager.addGallery(newGallery)
             GalleryManager.saveGalleries()
             
             Toast.makeText(this, "Gallery '${galleryName}' imported successfully with ${importData.photos.size} photos and ${importData.notes.size} notes", Toast.LENGTH_LONG).show()
