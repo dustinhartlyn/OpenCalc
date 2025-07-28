@@ -57,52 +57,17 @@ class CustomViewPager2 @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 initialX = ev.x
                 initialY = ev.y
-                Log.d("CustomViewPager2", "ACTION_DOWN at (${ev.x}, ${ev.y})")
+                Log.d("CustomViewPager2", "ACTION_DOWN at (${ev.x}, ${ev.y}) - NOT intercepting")
                 // Never intercept on ACTION_DOWN - always let child views get the touch event first
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                val currentPhotoView = getCurrentPhotoView()
-                if (currentPhotoView != null) {
-                    val scale = currentPhotoView.scale
-                    val deltaX = ev.x - initialX
-                    val deltaY = ev.y - initialY
-                    
-                    // Only intercept for significant horizontal movements (not taps or small gestures)
-                    val moveThreshold = 50f // Increased threshold to avoid interfering with taps
-                    
-                    if (abs(deltaX) > moveThreshold && abs(deltaX) > abs(deltaY)) {
-                        // This is clearly a horizontal swipe gesture
-                        Log.d("CustomViewPager2", "Clear horizontal swipe detected: deltaX=$deltaX, deltaY=$deltaY, scale=$scale")
-                        
-                        // If photo is zoomed in, only intercept for edge-to-edge navigation
-                        if (scale > 1.1f) {
-                            val isAtLeftEdge = currentPhotoView.isAtLeftEdge()
-                            val isAtRightEdge = currentPhotoView.isAtRightEdge()
-                            
-                            if ((deltaX > 0 && isAtLeftEdge) || (deltaX < 0 && isAtRightEdge)) {
-                                Log.d("CustomViewPager2", "Intercepting for edge navigation while zoomed")
-                                return true
-                            } else {
-                                Log.d("CustomViewPager2", "Photo zoomed but not at edge, letting PhotoView handle")
-                                return false
-                            }
-                        } else {
-                            Log.d("CustomViewPager2", "Normal zoom horizontal swipe, intercepting for ViewPager2")
-                            return true
-                        }
-                    } else if (abs(deltaY) > moveThreshold && abs(deltaY) > abs(deltaX)) {
-                        // This is clearly a vertical swipe - let PhotoView handle for dismiss
-                        Log.d("CustomViewPager2", "Clear vertical swipe detected, letting PhotoView handle for dismiss")
-                        return false
-                    }
-                    
-                    // For all other movements (including taps and small gestures), don't intercept
-                    Log.d("CustomViewPager2", "Small movement or ambiguous gesture, not intercepting (deltaX=$deltaX, deltaY=$deltaY)")
-                }
+                // Temporarily disable all custom interception logic to test PhotoView
+                Log.d("CustomViewPager2", "ACTION_MOVE - NOT intercepting (testing mode)")
                 return false
             }
         }
+        Log.d("CustomViewPager2", "Other action: ${ev.action} - NOT intercepting")
         return false // Default to not intercepting
     }
 

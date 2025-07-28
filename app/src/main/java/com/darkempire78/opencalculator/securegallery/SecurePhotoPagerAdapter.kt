@@ -72,6 +72,8 @@ class SecurePhotoPagerAdapter(
                 }
             }
             
+            // Temporarily disable custom touch listener to test PhotoView
+            /*
             // Simplified touch handling - only for swipe down to dismiss
             // Let PhotoView handle all other gestures naturally
             photoView.setOnTouchListener { v, event ->
@@ -85,6 +87,9 @@ class SecurePhotoPagerAdapter(
                 // Always return false to let PhotoView handle all gestures
                 false
             }
+            */
+            
+            Log.d("SecurePhotoPagerAdapter", "PhotoView touch listeners configured, testing without custom touch listener")
             
             // Use PhotoView's matrix change listener to detect scale changes
             photoView.setOnMatrixChangeListener { matrix ->
