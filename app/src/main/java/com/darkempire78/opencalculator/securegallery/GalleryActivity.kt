@@ -3,6 +3,8 @@ package com.darkempire78.opencalculator.securegallery
 import android.app.Dialog
 import android.content.Intent
 import android.os.Bundle
+import android.os.Environment
+import android.provider.DocumentsContract
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -16,6 +18,12 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.ItemTouchHelper
 import com.darkempire78.opencalculator.R
 import androidx.appcompat.widget.PopupMenu
+import java.io.File
+import java.io.FileOutputStream
+import java.io.FileInputStream
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class GalleryActivity : AppCompatActivity() {
     companion object {
@@ -66,6 +74,27 @@ class GalleryActivity : AppCompatActivity() {
             if (title.isNotEmpty() || body.isNotEmpty()) {
                 handleNoteSave(title, body, noteIndex, isNewNote)
             }
+        }
+    }
+    
+    // Activity result launcher for exporting photos directory selection
+    private val exportPhotosLauncher = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            handleExportPhotos(uri)
+        }
+    }
+    
+    // Activity result launcher for exporting gallery file
+    private val exportGalleryLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            handleExportGallery(uri)
+        }
+    }
+    
+    // Activity result launcher for importing gallery file
+    private val importGalleryLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            handleImportGallery(uri)
         }
     }
 
@@ -612,6 +641,9 @@ class GalleryActivity : AppCompatActivity() {
         // Only show normal menu items, delete mode is handled by dedicated buttons
         val menuItems = listOf(
             Pair("Add Pictures", R.id.action_add_pictures),
+            Pair("Export Photos", R.id.action_export_photos),
+            Pair("Export Gallery", R.id.action_export_gallery),
+            Pair("Import Gallery", R.id.action_import_gallery),
             Pair("Sort Options", -1), // Special submenu item
             Pair("Create Gallery", R.id.action_create_gallery),
             Pair("Rename Gallery", R.id.action_rename_gallery),
@@ -630,6 +662,9 @@ class GalleryActivity : AppCompatActivity() {
                 val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
                 when (id) {
                     R.id.action_add_pictures -> addPicturesToGallery()
+                    R.id.action_export_photos -> exportPhotosToMedia()
+                    R.id.action_export_gallery -> exportGalleryToFile()
+                    R.id.action_import_gallery -> importGalleryFromFile()
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
@@ -1066,4 +1101,245 @@ class GalleryActivity : AppCompatActivity() {
         
         itemTouchHelper.attachToRecyclerView(recyclerView)
     }
+    
+    // Export and Import Functions
+    
+    private fun exportPhotosToMedia() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        if (gallery.photos.isEmpty()) {
+            Toast.makeText(this, "No photos to export", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Show directory picker
+        exportPhotosLauncher.launch(null)
+    }
+    
+    private fun handleExportPhotos(directoryUri: android.net.Uri) {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        
+        if (key == null) {
+            Toast.makeText(this, "Unable to decrypt photos for export", Toast.LENGTH_LONG).show()
+            return
+        }
+        
+        var exportedCount = 0
+        var failedCount = 0
+        
+        try {
+            val documentTree = DocumentsContract.buildDocumentUriUsingTree(directoryUri, DocumentsContract.getTreeDocumentId(directoryUri))
+            
+            for ((index, photo) in gallery.photos.withIndex()) {
+                try {
+                    // Decrypt photo
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = try {
+                        CryptoUtils.decrypt(iv, ct, key)
+                    } catch (e: Exception) {
+                        // Try legacy decryption
+                        val legacySalt = ByteArray(16)
+                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                        CryptoUtils.decrypt(iv, ct, legacyKey)
+                    }
+                    
+                    // Create file name with timestamp
+                    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date(photo.date))
+                    val fileName = "exported_photo_${timestamp}_${index + 1}.jpg"
+                    
+                    // Create document
+                    val newFileUri = DocumentsContract.createDocument(
+                        contentResolver,
+                        documentTree,
+                        "image/jpeg",
+                        fileName
+                    )
+                    
+                    if (newFileUri != null) {
+                        contentResolver.openOutputStream(newFileUri)?.use { outputStream ->
+                            outputStream.write(decryptedBytes)
+                            exportedCount++
+                        }
+                    } else {
+                        failedCount++
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to export photo: ${photo.name}", e)
+                    failedCount++
+                }
+            }
+            
+            Toast.makeText(this, "Export complete: $exportedCount photos exported, $failedCount failed", Toast.LENGTH_LONG).show()
+            
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Export failed", e)
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun exportGalleryToFile() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+        val fileName = "gallery_${galleryName.replace(" ", "_")}_$timestamp.secgal"
+        
+        exportGalleryLauncher.launch(fileName)
+    }
+    
+    private fun handleExportGallery(fileUri: android.net.Uri) {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        try {
+            contentResolver.openOutputStream(fileUri)?.use { outputStream ->
+                // Create a serializable export format
+                val exportData = GalleryExportData(
+                    name = gallery.name,
+                    salt = gallery.salt,
+                    pinHash = gallery.pinHash,
+                    photos = gallery.photos,
+                    notes = gallery.notes,
+                    sortOrder = gallery.sortOrder,
+                    customOrder = gallery.customOrder,
+                    exportVersion = 1,
+                    exportDate = System.currentTimeMillis()
+                )
+                
+                // Serialize to bytes
+                val serializedData = java.io.ObjectOutputStream(outputStream).use { objOut ->
+                    objOut.writeObject(exportData)
+                }
+                
+                Toast.makeText(this, "Gallery exported successfully", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Gallery export failed", e)
+            Toast.makeText(this, "Export failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun importGalleryFromFile() {
+        importGalleryLauncher.launch(arrayOf("application/octet-stream", "*/*"))
+    }
+    
+    private fun handleImportGallery(fileUri: android.net.Uri) {
+        try {
+            contentResolver.openInputStream(fileUri)?.use { inputStream ->
+                val importData = java.io.ObjectInputStream(inputStream).use { objIn ->
+                    objIn.readObject() as GalleryExportData
+                }
+                
+                // Check if gallery name already exists
+                val existingGallery = GalleryManager.getGalleries().find { it.name == importData.name }
+                if (existingGallery != null) {
+                    // Show dialog to choose new name or replace
+                    showImportConflictDialog(importData)
+                } else {
+                    // Import directly
+                    performGalleryImport(importData, importData.name)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Gallery import failed", e)
+            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+    
+    private fun showImportConflictDialog(importData: GalleryExportData) {
+        val options = arrayOf("Replace existing gallery", "Import with new name", "Cancel")
+        
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Gallery Already Exists")
+            .setMessage("A gallery named '${importData.name}' already exists.")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        // Replace existing
+                        performGalleryImport(importData, importData.name, replace = true)
+                    }
+                    1 -> {
+                        // Import with new name
+                        showRenameForImportDialog(importData)
+                    }
+                    2 -> {
+                        // Cancel - do nothing
+                    }
+                }
+            }
+            .show()
+    }
+    
+    private fun showRenameForImportDialog(importData: GalleryExportData) {
+        val nameInput = android.widget.EditText(this)
+        nameInput.hint = "Enter new gallery name"
+        nameInput.setText("${importData.name} (imported)")
+        
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Import Gallery")
+            .setMessage("Enter a new name for the imported gallery:")
+            .setView(nameInput)
+            .setPositiveButton("Import") { _, _ ->
+                val newName = nameInput.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    performGalleryImport(importData, newName)
+                } else {
+                    Toast.makeText(this, "Gallery name cannot be empty", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun performGalleryImport(importData: GalleryExportData, galleryName: String, replace: Boolean = false) {
+        try {
+            if (replace) {
+                // Remove existing gallery
+                val existingGallery = GalleryManager.getGalleries().find { it.name == galleryName }
+                if (existingGallery != null) {
+                    GalleryManager.deleteGallery(existingGallery.id)
+                }
+            }
+            
+            // Create new gallery with imported data
+            val newGallery = Gallery(
+                name = galleryName,
+                salt = importData.salt,
+                pinHash = importData.pinHash,
+                sortOrder = importData.sortOrder,
+                customOrder = importData.customOrder.toMutableList()
+            )
+            
+            // Add photos and notes
+            newGallery.photos.addAll(importData.photos)
+            newGallery.notes.addAll(importData.notes)
+            
+            // Add to gallery manager
+            GalleryManager.getGalleries().add(newGallery)
+            GalleryManager.saveGalleries()
+            
+            Toast.makeText(this, "Gallery '${galleryName}' imported successfully with ${importData.photos.size} photos and ${importData.notes.size} notes", Toast.LENGTH_LONG).show()
+            
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Failed to import gallery", e)
+            Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
 }
+
+// Data class for gallery export
+data class GalleryExportData(
+    val name: String,
+    val salt: ByteArray,
+    val pinHash: ByteArray?,
+    val photos: List<SecurePhoto>,
+    val notes: List<SecureNote>,
+    val sortOrder: GallerySortOrder,
+    val customOrder: List<Int>,
+    val exportVersion: Int,
+    val exportDate: Long
+) : java.io.Serializable

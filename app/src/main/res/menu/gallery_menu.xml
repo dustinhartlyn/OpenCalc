@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/action_add_pictures" android:title="Add Pictures" android:showAsAction="never" />
+    <item android:id="@+id/action_export_photos" android:title="Export Photos" android:showAsAction="never" />
+    <item android:id="@+id/action_export_gallery" android:title="Export Gallery" android:showAsAction="never" />
+    <item android:id="@+id/action_import_gallery" android:title="Import Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_add_note" android:title="Add Note" android:showAsAction="never" />
     
     <!-- Sort Options Submenu -->
