@@ -23,10 +23,18 @@ class SecurePhotoPagerAdapter(
     inner class PhotoViewHolder(val photoView: PhotoView) : RecyclerView.ViewHolder(photoView) {
         
         private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean {
+                Log.d("SecurePhotoPagerAdapter", "Gesture down detected at (${e.x}, ${e.y})")
+                return true // Return true to indicate we want to process gestures
+            }
+            
             override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                Log.d("SecurePhotoPagerAdapter", "Fling detected: velocityX=$velocityX, velocityY=$velocityY")
                 if (e1 != null && photoView.scale <= 1.1f) {
                     val deltaY = e2.y - e1.y
                     val deltaX = e2.x - e1.x
+                    
+                    Log.d("SecurePhotoPagerAdapter", "Fling details: deltaY=$deltaY, deltaX=$deltaX, scale=${photoView.scale}")
                     
                     // Check for downward swipe to dismiss
                     if (deltaY > 150 && abs(deltaY) > abs(deltaX) && velocityY > 800) {
@@ -72,24 +80,16 @@ class SecurePhotoPagerAdapter(
                 }
             }
             
-            // Temporarily disable custom touch listener to test PhotoView
-            /*
-            // Simplified touch handling - only for swipe down to dismiss
-            // Let PhotoView handle all other gestures naturally
+            // Simple touch listener that only tracks swipe-down gestures for dismiss
+            // Always returns false so PhotoView handles all zoom/pan gestures normally
             photoView.setOnTouchListener { v, event ->
-                // Only track gestures for dismiss functionality
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE, MotionEvent.ACTION_UP -> {
-                        // Let gesture detector track for dismiss, but don't consume the event
-                        gestureDetector.onTouchEvent(event)
-                    }
-                }
+                // Let gesture detector track for swipe-down dismiss only
+                gestureDetector.onTouchEvent(event)
                 // Always return false to let PhotoView handle all gestures
                 false
             }
-            */
             
-            Log.d("SecurePhotoPagerAdapter", "PhotoView touch listeners configured, testing without custom touch listener")
+            Log.d("SecurePhotoPagerAdapter", "PhotoView touch listeners configured with swipe-down dismiss")
             
             // Use PhotoView's matrix change listener to detect scale changes
             photoView.setOnMatrixChangeListener { matrix ->
