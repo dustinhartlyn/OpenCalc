@@ -9,5 +9,6 @@ class Gallery(
     var name: String,
     val salt: ByteArray,
     val notes: MutableList<SecureNote> = mutableListOf(),
-    val photos: MutableList<SecurePhoto> = mutableListOf()
+    val photos: MutableList<SecurePhoto> = mutableListOf(),
+    var pinHash: ByteArray? = null // Secure PIN verification hash
 ) : Serializable

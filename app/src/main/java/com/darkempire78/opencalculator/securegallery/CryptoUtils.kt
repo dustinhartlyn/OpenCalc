@@ -39,4 +39,17 @@ object CryptoUtils {
         cipher.init(Cipher.DECRYPT_MODE, key, IvParameterSpec(iv))
         return cipher.doFinal(encrypted)
     }
+    
+    // Generate a secure hash for PIN verification that doesn't rely on encrypted content
+    fun generatePinHash(pin: String, salt: ByteArray): ByteArray {
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val spec = PBEKeySpec(pin.toCharArray(), salt, ITERATION_COUNT * 2, 256) // Double iterations for extra security
+        return factory.generateSecret(spec).encoded
+    }
+    
+    // Verify PIN against stored hash
+    fun verifyPin(pin: String, salt: ByteArray, storedHash: ByteArray): Boolean {
+        val computedHash = generatePinHash(pin, salt)
+        return computedHash.contentEquals(storedHash)
+    }
 }
