@@ -64,6 +64,18 @@ implementation("androidx.viewpager2:viewpager2:1.0.0")
 5. **Next/Previous**: Swipe left or right to view other photos
 6. **Exit**: Swipe down to return to the gallery
 
+### Troubleshooting:
+- **Tap to Zoom**: Uses PhotoView's native tap listeners for reliable zoom functionality
+- **Swipe Down**: Only works when photo is at normal zoom level (not zoomed in)
+- **Debug Logs**: Added logging to help troubleshoot gesture detection issues
+- **ViewPager2**: Configured for horizontal-only scrolling to avoid conflict with vertical gestures
+
+### Recent Fixes:
+- **Fixed Gesture Conflicts**: Replaced custom gesture detection with PhotoView's built-in listeners
+- **Enhanced Zoom Controls**: Added backup tap listeners and proper scale configuration
+- **Improved Swipe Detection**: Better handling of swipe-down-to-dismiss gesture
+- **Added Debug Logging**: Logs help identify gesture detection issues
+
 ### Technical Notes:
 - **Memory Efficient**: Only loads photos when needed, doesn't pass large data through Intents
 - **Robust Error Handling**: Handles corrupted encrypted data gracefully

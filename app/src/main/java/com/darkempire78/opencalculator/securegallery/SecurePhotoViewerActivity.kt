@@ -62,6 +62,13 @@ class SecurePhotoViewerActivity : AppCompatActivity() {
         }
 
         viewPager = findViewById(R.id.photoViewPager)
+        
+        // Configure ViewPager2 for horizontal scrolling only
+        viewPager.orientation = ViewPager2.ORIENTATION_HORIZONTAL
+        
+        // Reduce ViewPager2 sensitivity to allow vertical gestures to pass through
+        viewPager.isUserInputEnabled = true
+        
         adapter = SecurePhotoPagerAdapter(this, photos, galleryPin, gallerySalt) { position ->
             // Callback when swipe down to dismiss
             setResult(RESULT_OK, intent.putExtra("return_position", position))

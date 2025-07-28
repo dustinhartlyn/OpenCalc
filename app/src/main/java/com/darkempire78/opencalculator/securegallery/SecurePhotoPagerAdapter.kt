@@ -3,9 +3,7 @@ package com.darkempire78.opencalculator.securegallery
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Log
-import android.view.GestureDetector
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.darkempire78.opencalculator.R
@@ -21,39 +19,62 @@ class SecurePhotoPagerAdapter(
 ) : RecyclerView.Adapter<SecurePhotoPagerAdapter.PhotoViewHolder>() {
 
     inner class PhotoViewHolder(val photoView: PhotoView) : RecyclerView.ViewHolder(photoView) {
-        private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
+        
+        init {
+            // Enable all PhotoView features
+            photoView.isZoomable = true
+            photoView.maximumScale = 5.0f
+            photoView.minimumScale = 0.5f
+            photoView.mediumScale = 2.0f
+            
+            // Use PhotoView's built-in tap listener for zoom functionality
+            photoView.setOnPhotoTapListener { view, x, y ->
                 // Single tap to zoom in/out by 300%
-                if (photoView.scale > 1f) {
+                Log.d("SecurePhotoPagerAdapter", "Photo tapped at scale: ${photoView.scale}")
+                if (photoView.scale > 1.1f) {
                     // If zoomed in, zoom out to fit screen
-                    photoView.setScale(1f, e.x, e.y, true)
+                    photoView.setScale(1f, true)
                 } else {
                     // If at normal size, zoom in to 300%
-                    photoView.setScale(3f, e.x, e.y, true)
+                    photoView.setScale(3f, true)
                 }
-                return true
             }
-
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+            
+            // Use PhotoView's built-in view tap listener as backup
+            photoView.setOnViewTapListener { view, x, y ->
+                // Alternative tap handling if photo tap doesn't work
+                Log.d("SecurePhotoPagerAdapter", "View tapped at scale: ${photoView.scale}")
+                if (photoView.scale > 1.1f) {
+                    photoView.setScale(1f, true)
+                } else {
+                    photoView.setScale(3f, true)
+                }
+            }
+            
+            // Use PhotoView's matrix change listener to detect when user returns to normal scale
+            photoView.setOnMatrixChangeListener { matrix ->
+                Log.d("SecurePhotoPagerAdapter", "Matrix changed, current scale: ${photoView.scale}")
+            }
+            
+            // Use PhotoView's built-in single fling listener for swipe down to dismiss
+            photoView.setOnSingleFlingListener { e1, e2, velocityX, velocityY ->
+                Log.d("SecurePhotoPagerAdapter", "Fling detected: scale=${photoView.scale}, velocityY=$velocityY, velocityX=$velocityX")
                 // Only handle swipe down to dismiss when at normal zoom level
-                if (photoView.scale <= 1.1f && e1 != null) {
+                if (photoView.scale <= 1.1f) {
                     val deltaY = e2.y - e1.y
                     val deltaX = e2.x - e1.x
                     
                     // Check if it's a downward swipe (and not primarily horizontal)
                     if (deltaY > 200 && abs(deltaY) > abs(deltaX) && velocityY > 1000) {
+                        Log.d("SecurePhotoPagerAdapter", "Dismissing photo viewer")
                         onDismiss(adapterPosition)
-                        return true
+                        true
+                    } else {
+                        false
                     }
+                } else {
+                    false
                 }
-                return false
-            }
-        })
-
-        init {
-            photoView.setOnTouchListener { _, event ->
-                gestureDetector.onTouchEvent(event)
-                false // Return false to allow PhotoView to handle zoom/pan
             }
         }
     }
