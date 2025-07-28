@@ -111,7 +111,7 @@ class GalleryActivity : AppCompatActivity() {
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
         val encryptedPhotos = mutableListOf<SecurePhoto>()
-        val originalPaths = mutableListOf<String>()
+        val deletableUris = mutableListOf<android.net.Uri>()
         
         for (uri in uris) {
             try {
@@ -122,9 +122,13 @@ class GalleryActivity : AppCompatActivity() {
                     val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
                     val combined = iv + encrypted
                     encryptedPhotos.add(SecurePhoto(encryptedData = combined, name = "photo_${System.currentTimeMillis()}.jpg", date = System.currentTimeMillis()))
-                    // Try to get original file path for deletion prompt
-                    val path = uri.path ?: ""
-                    originalPaths.add(path)
+                    
+                    // Only add URIs that can actually be deleted (not photo picker temporary URIs)
+                    val scheme = uri.scheme
+                    val authority = uri.authority
+                    if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
+                        deletableUris.add(uri)
+                    }
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SecureGallery", "Failed to encrypt photo: $uri", e)
@@ -137,20 +141,29 @@ class GalleryActivity : AppCompatActivity() {
         GalleryManager.setContext(this)
         GalleryManager.saveGalleries()
         
-        // Prompt to delete originals
-        if (originalPaths.isNotEmpty()) {
+        // Only prompt to delete originals if we have deletable URIs
+        if (deletableUris.isNotEmpty()) {
             deleteDialog = android.app.AlertDialog.Builder(this)
                 .setTitle("Delete Original Photos?")
-                .setMessage("Do you want to delete the original photos from your device?")
+                .setMessage("Do you want to delete the original photos from your device? (${deletableUris.size} of ${uris.size} photos can be deleted)")
                 .setPositiveButton("Delete") { _, _ ->
-                    for (uri in uris) {
+                    var deletedCount = 0
+                    var failedCount = 0
+                    for (uri in deletableUris) {
                         try {
                             contentResolver.delete(uri, null, null)
+                            deletedCount++
                         } catch (e: Exception) {
                             android.util.Log.e("SecureGallery", "Failed to delete original photo: $uri", e)
+                            failedCount++
                         }
                     }
-                    Toast.makeText(this, "Original photos deleted", Toast.LENGTH_SHORT).show()
+                    val message = if (failedCount > 0) {
+                        "Deleted $deletedCount photos, failed to delete $failedCount"
+                    } else {
+                        "Original photos deleted ($deletedCount)"
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                     deleteDialog = null
                     // Refresh gallery UI (reload photos)
                     recreate()
@@ -163,7 +176,14 @@ class GalleryActivity : AppCompatActivity() {
                 .create()
             deleteDialog?.show()
         } else {
-            // Refresh gallery UI (reload photos) if no deletion prompt
+            // No deletable photos - show info message if photos came from photo picker
+            val hasPickerUris = uris.any { uri -> 
+                uri.authority == "com.android.providers.media.photopicker" || uri.toString().contains("picker_get_content")
+            }
+            if (hasPickerUris) {
+                Toast.makeText(this, "Photos imported successfully. Original photos remain in your gallery.", Toast.LENGTH_LONG).show()
+            }
+            // Refresh gallery UI (reload photos)
             recreate()
         }
     }
