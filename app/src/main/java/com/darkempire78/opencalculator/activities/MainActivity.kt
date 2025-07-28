@@ -123,35 +123,43 @@ class MainActivity : AppCompatActivity() {
         GalleryManager.setContext(this)
         GalleryManager.loadGalleries()
         
+        // --- Secure Gallery: Migrate existing galleries to new PIN hash system ---
+        try {
+            val existingGalleries = GalleryManager.getGalleries()
+            var needsSave = false
+            for (gallery in existingGalleries) {
+                if (gallery.pinHash == null) {
+                    // This is an old gallery without PIN hash - try to migrate it
+                    // For default gallery, we know the PIN should be "1111"
+                    if (gallery.name == "Default Gallery") {
+                        val pinHash = CryptoUtils.generatePinHash("1111", gallery.salt)
+                        gallery.pinHash = pinHash
+                        needsSave = true
+                        android.util.Log.d("SecureGallery", "Migrated default gallery to new PIN hash system.")
+                    } else {
+                        android.util.Log.w("SecureGallery", "Found gallery '${gallery.name}' without PIN hash - cannot migrate without original PIN.")
+                    }
+                }
+            }
+            if (needsSave) {
+                GalleryManager.saveGalleries()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Error during gallery migration: ${e.message}")
+        }
+        
         // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
         try {
             if (GalleryManager.getGalleries().isEmpty()) {
                 val defaultPin = "1111"
-                // Use a fixed salt for the default gallery so unlock logic is always consistent
-                val salt = ByteArray(16) { 0x11.toByte() } // 16 bytes of value 0x11
-                val key = CryptoUtils.deriveKey(defaultPin, salt)
-                // Encrypt title and body using the derived key
-                val titlePlain = "Welcome"
-                val bodyPlain = "Test note for pin unlock"
-                val encryptedTitlePair = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
-                val encryptedBodyPair = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
-                // Store IV + ciphertext for both title and body
-                val encryptedTitle = encryptedTitlePair.first + encryptedTitlePair.second
-                val encryptedBody = encryptedBodyPair.first + encryptedBodyPair.second
-                val testNote = com.darkempire78.opencalculator.securegallery.SecureNote(
-                    encryptedTitle = encryptedTitle,
-                    encryptedBody = encryptedBody,
-                    date = System.currentTimeMillis()
-                )
-                val newGallery = Gallery(
-                    name = "Default Gallery",
-                    salt = salt,
-                    notes = mutableListOf(testNote),
-                    photos = mutableListOf()
-                )
-                GalleryManager.addGallery(newGallery)
-                GalleryManager.saveGalleries()
-                android.util.Log.d("SecureGallery", "Default gallery created with pin 1111 and fixed salt.")
+                // Create the default gallery using the GalleryManager's createGallery method
+                // which properly handles PIN hashing
+                val success = GalleryManager.createGallery(defaultPin, "Default Gallery")
+                if (success) {
+                    android.util.Log.d("SecureGallery", "Default gallery created with pin 1111.")
+                } else {
+                    android.util.Log.e("SecureGallery", "Failed to create default gallery.")
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("SecureGallery", "Failed to create default gallery: ${e.message}")
