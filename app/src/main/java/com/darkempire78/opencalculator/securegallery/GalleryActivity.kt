@@ -25,6 +25,11 @@ class GalleryActivity : AppCompatActivity() {
     private val selectedPhotosForDeletion = mutableSetOf<Int>()
     private var photosAdapter: RecyclerView.Adapter<PhotoThumbnailViewHolder>? = null
     
+    // Note management
+    private var isNoteDeleteMode = false
+    private val selectedNotesForDeletion = mutableSetOf<Int>()
+    private var notesAdapter: RecyclerView.Adapter<NoteViewHolder>? = null
+    
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -41,6 +46,20 @@ class GalleryActivity : AppCompatActivity() {
     private val addPicturesLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
             handleSelectedImages(uris)
+        }
+    }
+    
+    // Activity result launcher for note editor
+    private val noteEditorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val title = result.data?.getStringExtra("note_title") ?: ""
+            val body = result.data?.getStringExtra("note_body") ?: ""
+            val noteIndex = result.data?.getIntExtra("note_index", -1) ?: -1
+            val isNewNote = result.data?.getBooleanExtra("is_new_note", true) ?: true
+            
+            if (title.isNotEmpty() || body.isNotEmpty()) {
+                handleNoteSave(title, body, noteIndex, isNewNote)
+            }
         }
     }
 
@@ -167,6 +186,81 @@ class GalleryActivity : AppCompatActivity() {
         exitDeleteMode()
         recreate()
     }
+    
+    private fun enterNoteDeleteMode() {
+        isNoteDeleteMode = true
+        selectedNotesForDeletion.clear()
+        
+        // Refresh the adapter to show checkboxes
+        notesAdapter?.notifyDataSetChanged()
+    }
+
+    private fun exitNoteDeleteMode() {
+        isNoteDeleteMode = false
+        selectedNotesForDeletion.clear()
+        
+        // Refresh the adapter to hide checkboxes
+        notesAdapter?.notifyDataSetChanged()
+    }
+    
+    private fun openNoteEditor(noteIndex: Int, title: String, body: String) {
+        val intent = Intent(this, NoteEditorActivity::class.java)
+        intent.putExtra("gallery_name", intent.getStringExtra("gallery_name"))
+        intent.putExtra("note_index", noteIndex)
+        intent.putExtra("note_title", title)
+        intent.putExtra("note_body", body)
+        noteEditorLauncher.launch(intent)
+    }
+    
+    private fun handleNoteSave(title: String, body: String, noteIndex: Int, isNewNote: Boolean) {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        
+        if (key != null) {
+            try {
+                val (ivTitle, ctTitle) = CryptoUtils.encrypt(title.toByteArray(Charsets.UTF_8), key)
+                val (ivBody, ctBody) = CryptoUtils.encrypt(body.toByteArray(Charsets.UTF_8), key)
+                val encryptedTitle = ivTitle + ctTitle
+                val encryptedBody = ivBody + ctBody
+                
+                val note = SecureNote(encryptedTitle = encryptedTitle, encryptedBody = encryptedBody, date = System.currentTimeMillis())
+                
+                if (isNewNote) {
+                    gallery.notes.add(note)
+                } else {
+                    gallery.notes[noteIndex] = note
+                }
+                
+                GalleryManager.saveGalleries()
+                recreate() // Refresh the activity to show updated notes
+            } catch (e: Exception) {
+                android.util.Log.e("SecureGallery", "Failed to encrypt note", e)
+            }
+        }
+    }
+    
+    private fun deleteSelectedNotes() {
+        if (selectedNotesForDeletion.isEmpty()) return
+        
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        val sortedIndices = selectedNotesForDeletion.sortedDescending()
+        for (index in sortedIndices) {
+            if (index < gallery.notes.size) {
+                gallery.notes.removeAt(index)
+            }
+        }
+        
+        GalleryManager.saveGalleries()
+        
+        // Exit delete mode and refresh UI
+        exitNoteDeleteMode()
+        recreate()
+    }
 
     override fun onDestroy() {
         deleteDialog?.dismiss()
@@ -187,8 +281,6 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
         val notes = gallery?.notes ?: mutableListOf()
         val photos = gallery?.photos ?: mutableListOf()
-
-        findViewById<android.widget.TextView>(R.id.galleryTitle).text = galleryName
 
         // Decrypt notes using pin and salt
         val pin = TempPinHolder.pin ?: ""
@@ -216,16 +308,51 @@ class GalleryActivity : AppCompatActivity() {
 
         val notesRecyclerView = findViewById<RecyclerView>(R.id.notesRecyclerView)
         notesRecyclerView.layoutManager = LinearLayoutManager(this)
-        notesRecyclerView.adapter = object : RecyclerView.Adapter<NoteViewHolder>() {
+        notesAdapter = object : RecyclerView.Adapter<NoteViewHolder>() {
             override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): NoteViewHolder {
                 val v = android.view.LayoutInflater.from(parent.context).inflate(android.R.layout.simple_list_item_2, parent, false)
                 return NoteViewHolder(v)
             }
             override fun getItemCount() = decryptedNotes.size
             override fun onBindViewHolder(holder: NoteViewHolder, position: Int) {
-                holder.bind(decryptedNotes[position].first, decryptedNotes[position].second)
+                val note = decryptedNotes[position]
+                val isSelected = selectedNotesForDeletion.contains(position)
+                holder.bind(note.first, note.second, isNoteDeleteMode, isSelected)
+                
+                if (isNoteDeleteMode) {
+                    // In delete mode, clicking toggles selection
+                    holder.itemView.setOnClickListener {
+                        if (selectedNotesForDeletion.contains(position)) {
+                            selectedNotesForDeletion.remove(position)
+                        } else {
+                            selectedNotesForDeletion.add(position)
+                        }
+                        notifyItemChanged(position)
+                        
+                        // Auto-cancel delete mode if no notes are selected
+                        if (selectedNotesForDeletion.isEmpty()) {
+                            exitNoteDeleteMode()
+                        }
+                    }
+                    
+                    holder.itemView.setOnLongClickListener(null)
+                } else {
+                    // Normal mode - click to edit note
+                    holder.itemView.setOnClickListener {
+                        openNoteEditor(position, note.first, note.second)
+                    }
+                    
+                    // Long press to enter delete mode
+                    holder.itemView.setOnLongClickListener {
+                        enterNoteDeleteMode()
+                        selectedNotesForDeletion.add(position)
+                        notifyDataSetChanged()
+                        true
+                    }
+                }
             }
         }
+        notesRecyclerView.adapter = notesAdapter
 
         // Setup photos RecyclerView with two-column grid
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
@@ -315,11 +442,6 @@ class GalleryActivity : AppCompatActivity() {
             }
         })
 
-        findViewById<android.view.View>(R.id.galleryTitle).setOnTouchListener { _, event ->
-            gestureDetector.onTouchEvent(event)
-            true
-        }
-
         // Setup hamburger menu
         val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.galleryToolbar)
         setSupportActionBar(toolbar)
@@ -338,6 +460,12 @@ class GalleryActivity : AppCompatActivity() {
         
         cancelButton.setOnClickListener {
             exitDeleteMode()
+        }
+        
+        // Setup add note button
+        val addNoteButton = findViewById<android.widget.Button>(R.id.addNoteButton)
+        addNoteButton.setOnClickListener {
+            openNoteEditor(-1, "", "")
         }
     }
 
@@ -473,11 +601,31 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     class NoteViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(title: String, body: String) {
+        fun bind(title: String, body: String, isDeleteMode: Boolean = false, isSelected: Boolean = false) {
             val titleView = itemView.findViewById<android.widget.TextView>(android.R.id.text1)
             val bodyView = itemView.findViewById<android.widget.TextView>(android.R.id.text2)
             titleView.text = title
             bodyView.text = body
+            
+            // Set text color for dark background
+            titleView.setTextColor(android.graphics.Color.WHITE)
+            bodyView.setTextColor(android.graphics.Color.LTGRAY)
+            
+            // Handle selection overlay
+            if (isDeleteMode) {
+                // Add a semi-transparent overlay for delete mode
+                if (isSelected) {
+                    itemView.alpha = 0.6f
+                    itemView.setBackgroundColor(0x880000FF.toInt()) // Semi-transparent blue
+                } else {
+                    itemView.alpha = 1.0f
+                    itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
+                }
+            } else {
+                // Normal mode - remove any overlays
+                itemView.alpha = 1.0f
+                itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
+            }
         }
     }
     
