@@ -352,9 +352,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         super.onPause()
         isActivityVisible = false
         // Security feature: close gallery when app loses focus
-        // BUT don't close if photo picker is active or security was already triggered
-        if (!isPhotoPickerActive && !TempPinHolder.securityTriggered) {
-            TempPinHolder.securityTriggered = true
+        // BUT don't close if photo picker is active
+        if (!isPhotoPickerActive) {
             closeGalleryForSecurity()
         }
     }
@@ -380,7 +379,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         screenOffReceiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
                 if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                    TempPinHolder.securityTriggered = true
                     closeGalleryForSecurity()
                 }
             }
@@ -414,7 +412,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // SensorEventListener implementation for accelerometer
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER && !TempPinHolder.securityTriggered) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
@@ -422,7 +420,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             // Check if phone is face down (Z-axis negative with significant magnitude)
             // Threshold of -8.0 for face down detection (gravity is ~9.8, allowing for some tolerance)
             if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
-                TempPinHolder.securityTriggered = true
                 closeGalleryForSecurity()
             }
         }
