@@ -160,15 +160,6 @@ class GalleryActivity : AppCompatActivity() {
         recreate()
     }
 
-    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
-        // Don't use the standard options menu, we use custom hamburger menu
-        return false
-    }
-
-    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
-        return super.onOptionsItemSelected(item)
-    }
-
     override fun onDestroy() {
         deleteDialog?.dismiss()
         deleteDialog = null
@@ -489,15 +480,15 @@ class GalleryActivity : AppCompatActivity() {
                 // Add a semi-transparent overlay for delete mode
                 if (isSelected) {
                     itemView.alpha = 0.6f
-                    itemView.setBackgroundColor(0x880000FF) // Semi-transparent blue
+                    itemView.setBackgroundColor(0x880000FF.toInt()) // Semi-transparent blue
                 } else {
                     itemView.alpha = 1.0f
-                    itemView.setBackgroundColor(0x00000000) // Transparent
+                    itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
                 }
             } else {
                 // Normal mode - remove any overlays
                 itemView.alpha = 1.0f
-                itemView.setBackgroundColor(0x00000000) // Transparent
+                itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
             }
         }
     }
