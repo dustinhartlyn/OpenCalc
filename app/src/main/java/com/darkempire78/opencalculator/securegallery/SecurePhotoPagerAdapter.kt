@@ -48,35 +48,54 @@ class SecurePhotoPagerAdapter(
             
             // Use PhotoView's built-in tap listener for zoom functionality
             photoView.setOnPhotoTapListener { view, x, y ->
-                Log.d("SecurePhotoPagerAdapter", "Photo tapped at scale: ${photoView.scale}")
+                Log.d("SecurePhotoPagerAdapter", "Photo tapped at scale: ${photoView.scale}, coordinates: ($x, $y)")
                 if (photoView.scale > 1.1f) {
+                    Log.d("SecurePhotoPagerAdapter", "Zooming out to 1x")
                     photoView.setScale(1f, true)
                 } else {
+                    Log.d("SecurePhotoPagerAdapter", "Zooming in to 3x")
                     photoView.setScale(3f, true)
                 }
             }
             
             // Use PhotoView's built-in view tap listener as backup
             photoView.setOnViewTapListener { view, x, y ->
-                Log.d("SecurePhotoPagerAdapter", "View tapped at scale: ${photoView.scale}")
+                Log.d("SecurePhotoPagerAdapter", "View tapped at scale: ${photoView.scale}, coordinates: ($x, $y)")
                 if (photoView.scale > 1.1f) {
+                    Log.d("SecurePhotoPagerAdapter", "Zooming out to 1x (view tap)")
                     photoView.setScale(1f, true)
                 } else {
+                    Log.d("SecurePhotoPagerAdapter", "Zooming in to 3x (view tap)")
                     photoView.setScale(3f, true)
                 }
             }
             
             // Custom touch handling for swipe down to dismiss
             photoView.setOnTouchListener { v, event ->
-                // Let gesture detector handle fling gestures for dismiss
-                val gestureHandled = gestureDetector.onTouchEvent(event)
-                
-                // If not handled by gesture detector, let PhotoView handle it
-                if (!gestureHandled) {
-                    // Return false to let PhotoView handle zoom/pan
-                    false
-                } else {
-                    true
+                // Only handle specific gestures with our gesture detector
+                // Let PhotoView handle all zoom/pan gestures by default
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        // Let gesture detector track the initial touch
+                        gestureDetector.onTouchEvent(event)
+                        // Always return false so PhotoView gets the event too
+                        false
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        // Only handle if PhotoView is at normal scale and it's a vertical gesture
+                        if (photoView.scale <= 1.1f) {
+                            gestureDetector.onTouchEvent(event)
+                        }
+                        // Always return false so PhotoView handles zoom/pan
+                        false
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        // Let gesture detector handle fling detection
+                        val gestureHandled = gestureDetector.onTouchEvent(event)
+                        // Return false to let PhotoView finish its handling
+                        false
+                    }
+                    else -> false
                 }
             }
             
