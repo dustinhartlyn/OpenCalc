@@ -58,7 +58,7 @@ class CustomViewPager2 @JvmOverloads constructor(
                 initialX = ev.x
                 initialY = ev.y
                 Log.d("CustomViewPager2", "ACTION_DOWN at (${ev.x}, ${ev.y})")
-                // Don't intercept on ACTION_DOWN - let child views get the touch event first
+                // Never intercept on ACTION_DOWN - always let child views get the touch event first
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
@@ -68,43 +68,38 @@ class CustomViewPager2 @JvmOverloads constructor(
                     val deltaX = ev.x - initialX
                     val deltaY = ev.y - initialY
                     
-                    // Only intercept if there's significant movement and specific conditions are met
-                    val moveThreshold = 20f // Only consider meaningful movements
+                    // Only intercept for significant horizontal movements (not taps or small gestures)
+                    val moveThreshold = 50f // Increased threshold to avoid interfering with taps
                     
-                    if (abs(deltaX) > moveThreshold || abs(deltaY) > moveThreshold) {
-                        Log.d("CustomViewPager2", "Significant movement detected: deltaX=$deltaX, deltaY=$deltaY, scale=$scale")
+                    if (abs(deltaX) > moveThreshold && abs(deltaX) > abs(deltaY)) {
+                        // This is clearly a horizontal swipe gesture
+                        Log.d("CustomViewPager2", "Clear horizontal swipe detected: deltaX=$deltaX, deltaY=$deltaY, scale=$scale")
                         
                         // If photo is zoomed in, only intercept for edge-to-edge navigation
                         if (scale > 1.1f) {
-                            // Check if we're doing horizontal pan at photo edge
-                            if (abs(deltaX) > abs(deltaY) && abs(deltaX) > moveThreshold) {
-                                val isAtLeftEdge = currentPhotoView.isAtLeftEdge()
-                                val isAtRightEdge = currentPhotoView.isAtRightEdge()
-                                
-                                if ((deltaX > 0 && isAtLeftEdge) || (deltaX < 0 && isAtRightEdge)) {
-                                    Log.d("CustomViewPager2", "Intercepting for edge navigation")
-                                    // At edge and trying to pan further - intercept for ViewPager2
-                                    return true
-                                }
-                            }
-                            // For all other cases when zoomed, let PhotoView handle
-                            Log.d("CustomViewPager2", "Photo zoomed, letting PhotoView handle")
-                            return false
-                        } else {
-                            // Photo is not zoomed in
-                            if (abs(deltaY) > abs(deltaX) && abs(deltaY) > moveThreshold) {
-                                Log.d("CustomViewPager2", "Vertical swipe, letting PhotoView handle for dismiss")
-                                // Primarily vertical swipe - let PhotoView handle for dismiss
-                                return false
-                            } else if (abs(deltaX) > moveThreshold) {
-                                Log.d("CustomViewPager2", "Horizontal swipe at normal zoom, intercepting for ViewPager2")
-                                // Horizontal swipe at normal zoom - let ViewPager2 handle
+                            val isAtLeftEdge = currentPhotoView.isAtLeftEdge()
+                            val isAtRightEdge = currentPhotoView.isAtRightEdge()
+                            
+                            if ((deltaX > 0 && isAtLeftEdge) || (deltaX < 0 && isAtRightEdge)) {
+                                Log.d("CustomViewPager2", "Intercepting for edge navigation while zoomed")
                                 return true
+                            } else {
+                                Log.d("CustomViewPager2", "Photo zoomed but not at edge, letting PhotoView handle")
+                                return false
                             }
+                        } else {
+                            Log.d("CustomViewPager2", "Normal zoom horizontal swipe, intercepting for ViewPager2")
+                            return true
                         }
+                    } else if (abs(deltaY) > moveThreshold && abs(deltaY) > abs(deltaX)) {
+                        // This is clearly a vertical swipe - let PhotoView handle for dismiss
+                        Log.d("CustomViewPager2", "Clear vertical swipe detected, letting PhotoView handle for dismiss")
+                        return false
                     }
+                    
+                    // For all other movements (including taps and small gestures), don't intercept
+                    Log.d("CustomViewPager2", "Small movement or ambiguous gesture, not intercepting (deltaX=$deltaX, deltaY=$deltaY)")
                 }
-                // For small movements or no PhotoView, don't intercept
                 return false
             }
         }
@@ -119,16 +114,22 @@ class CustomViewPager2 @JvmOverloads constructor(
         return try {
             val recyclerView = viewPager2.getChildAt(0) as? androidx.recyclerview.widget.RecyclerView
             if (recyclerView != null) {
-                val viewHolder = recyclerView.findViewHolderForAdapterPosition(viewPager2.currentItem)
+                val currentItem = viewPager2.currentItem
+                Log.d("CustomViewPager2", "Looking for PhotoView at position $currentItem")
+                val viewHolder = recyclerView.findViewHolderForAdapterPosition(currentItem)
                 if (viewHolder is SecurePhotoPagerAdapter.PhotoViewHolder) {
+                    Log.d("CustomViewPager2", "Found PhotoView with scale: ${viewHolder.photoView.scale}")
                     viewHolder.photoView
                 } else {
+                    Log.d("CustomViewPager2", "ViewHolder not found or wrong type: $viewHolder")
                     null
                 }
             } else {
+                Log.d("CustomViewPager2", "RecyclerView not found")
                 null
             }
         } catch (e: Exception) {
+            Log.e("CustomViewPager2", "Error getting current PhotoView", e)
             null
         }
     }
