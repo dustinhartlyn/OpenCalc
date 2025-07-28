@@ -27,23 +27,12 @@ object GalleryManager {
             return false
         }
         val salt = CryptoUtils.generateSalt()
-        val key = CryptoUtils.deriveKey(pin, salt)
         val pinHash = CryptoUtils.generatePinHash(pin, salt)
-        val titlePlain = "Welcome"
-        val bodyPlain = "Your new gallery is ready."
-        val encryptedTitlePair = CryptoUtils.encrypt(titlePlain.toByteArray(Charsets.UTF_8), key)
-        val encryptedBodyPair = CryptoUtils.encrypt(bodyPlain.toByteArray(Charsets.UTF_8), key)
-        val encryptedTitle = encryptedTitlePair.first + encryptedTitlePair.second
-        val encryptedBody = encryptedBodyPair.first + encryptedBodyPair.second
-        val welcomeNote = SecureNote(
-            encryptedTitle = encryptedTitle,
-            encryptedBody = encryptedBody,
-            date = System.currentTimeMillis()
-        )
+        
         val newGallery = Gallery(
             name = name,
             salt = salt,
-            notes = mutableListOf(welcomeNote),
+            notes = mutableListOf(), // Start with empty notes list
             photos = mutableListOf(),
             pinHash = pinHash
         )
@@ -85,33 +74,15 @@ object GalleryManager {
 
     fun findGalleryByPin(pin: String): Gallery? {
         for (gallery in galleries) {
-            // Use the new secure PIN hash verification if available
-            if (gallery.pinHash != null) {
-                if (CryptoUtils.verifyPin(pin, gallery.salt, gallery.pinHash!!)) {
-                    android.util.Log.d("SecureGallery", "Pin correct for gallery '${gallery.name}' (using hash)")
-                    return gallery
-                }
-                continue
+            // Use the secure PIN hash verification
+            if (gallery.pinHash != null && CryptoUtils.verifyPin(pin, gallery.salt, gallery.pinHash!!)) {
+                android.util.Log.d("SecureGallery", "Pin correct for gallery '${gallery.name}'")
+                return gallery
             }
-            
-            // Fallback to old method for existing galleries without pinHash
-            val key = CryptoUtils.deriveKey(pin, gallery.salt)
-            if (gallery.notes.isNotEmpty()) {
-                val note = gallery.notes[0]
-                try {
-                    // Try to decrypt the title using the key
-                    val iv = note.encryptedTitle.sliceArray(0 until 16)
-                    val ciphertext = note.encryptedTitle.sliceArray(16 until note.encryptedTitle.size)
-                    val decrypted = CryptoUtils.decrypt(iv, ciphertext, key)
-                    val title = String(decrypted, Charsets.UTF_8)
-                    android.util.Log.d("SecureGallery", "Pin test: decrypted title='${title}' for gallery='${gallery.name}'")
-                    // If the decrypted title is valid UTF-8 and matches expected, unlock
-                    if (title == "Welcome") {
-                        android.util.Log.d("SecureGallery", "Pin correct for gallery '${gallery.name}' (using legacy method)")
-                        // Migrate to new PIN hash system
-                        gallery.pinHash = CryptoUtils.generatePinHash(pin, gallery.salt)
-                        saveGalleries() // Save the updated gallery with PIN hash
-                        return gallery
+        }
+        android.util.Log.d("SecureGallery", "No gallery found with the provided pin")
+        return null
+    }
                     }
                 } catch (e: Exception) {
                     android.util.Log.d("SecureGallery", "Pin test failed for gallery '${gallery.name}': ${e.message}")
