@@ -358,9 +358,19 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Security feature: close gallery when app loses focus
         // BUT don't close if photo picker is active or we're recreating the activity
         // ALSO don't close if screen is off (let screen off receiver handle it to avoid duplicate triggers)
+        // ALSO add a small delay to prevent immediate closure during activity startup
         if (!isPhotoPickerActive && !isRecreating && !isScreenOff) {
-            android.util.Log.d("SecureGallery", "onPause called - triggering security for app focus loss")
-            closeGalleryForSecurity()
+            android.util.Log.d("SecureGallery", "onPause called - scheduling delayed security check")
+            // Use a small delay to prevent immediate closure during activity startup
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                // Double-check that we're still paused and conditions haven't changed
+                if (!isActivityVisible && !isPhotoPickerActive && !isRecreating && !isScreenOff) {
+                    android.util.Log.d("SecureGallery", "Delayed security check - triggering security for app focus loss")
+                    closeGalleryForSecurity()
+                } else {
+                    android.util.Log.d("SecureGallery", "Delayed security check - conditions changed, NOT triggering security")
+                }
+            }, 250) // 250ms delay to allow for brief lifecycle transitions
         } else {
             android.util.Log.d("SecureGallery", "onPause called - NOT triggering security (photoPickerActive=$isPhotoPickerActive, recreating=$isRecreating, screenOff=$isScreenOff)")
         }
