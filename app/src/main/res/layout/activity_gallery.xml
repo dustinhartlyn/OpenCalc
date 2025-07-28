@@ -22,13 +22,12 @@
         android:gravity="center_horizontal"
         android:paddingBottom="8dp" />
 
-    <TextView
-        android:id="@+id/notesLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Notes"
-        android:textSize="18sp"
-        android:paddingTop="8dp" />
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/photosRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/notesRecyclerView"
@@ -36,19 +35,5 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:paddingBottom="8dp" />
-
-    <TextView
-        android:id="@+id/photosLabel"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Photos"
-        android:textSize="18sp"
-        android:paddingTop="8dp" />
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/photosRecyclerView"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
 
 </LinearLayout>
