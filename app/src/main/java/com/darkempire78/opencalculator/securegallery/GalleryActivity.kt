@@ -37,6 +37,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         const val PHOTO_VIEWER_REQUEST = 1002
     }
 
+    // Data class for media thumbnails
+    data class MediaThumbnail(
+        val bitmap: android.graphics.Bitmap?,
+        val duration: String?,
+        val mediaType: MediaType
+    )
+
     private var deleteDialog: android.app.AlertDialog? = null
     private var isDeleteMode = false
     private val selectedPhotosForDeletion = mutableSetOf<Int>()
@@ -49,7 +56,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Organize mode for drag-and-drop reordering
     private var isOrganizeMode = false
-    private var organizePhotos = mutableListOf<android.graphics.Bitmap?>()
+    private var organizeMedia = mutableListOf<MediaThumbnail?>()
     
     // Security features
     private lateinit var sensorManager: SensorManager
@@ -73,11 +80,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // Activity result launcher for adding multiple pictures
-    private val addPicturesLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+    // Activity result launcher for adding multiple pictures and videos
+    private val addMediaLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         isPhotoPickerActive = false // Reset the flag when picker returns
         if (uris.isNotEmpty()) {
-            handleSelectedImages(uris)
+            handleSelectedMedia(uris)
         }
     }
     
@@ -116,20 +123,20 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
     }
 
-    // Handler for Add Pictures menu item
-    private fun addPicturesToGallery() {
+    // Handler for Add Media menu item (photos and videos)
+    private fun addMediaToGallery() {
         isPhotoPickerActive = true
-        addPicturesLauncher.launch("image/*")
+        addMediaLauncher.launch("*/*") // Accept both images and videos
     }
 
-    private fun handleSelectedImages(uris: List<android.net.Uri>) {
+    private fun handleSelectedMedia(uris: List<android.net.Uri>) {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
-        val encryptedPhotos = mutableListOf<SecurePhoto>()
+        val encryptedMedia = mutableListOf<SecureMedia>()
         val deletableUris = mutableListOf<android.net.Uri>()
         
         for (uri in uris) {
@@ -137,10 +144,30 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 val inputStream = contentResolver.openInputStream(uri)
                 val bytes = inputStream?.readBytes() ?: continue
                 inputStream.close()
+                
+                // Determine media type based on MIME type
+                val mimeType = contentResolver.getType(uri)
+                val mediaType = when {
+                    mimeType?.startsWith("image/") == true -> MediaType.PHOTO
+                    mimeType?.startsWith("video/") == true -> MediaType.VIDEO
+                    else -> MediaType.PHOTO // Default to photo if unknown
+                }
+                
                 if (key != null) {
                     val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
                     val combined = iv + encrypted
-                    encryptedPhotos.add(SecurePhoto(encryptedData = combined, name = "photo_${System.currentTimeMillis()}.jpg", date = System.currentTimeMillis()))
+                    val extension = when (mediaType) {
+                        MediaType.PHOTO -> ".jpg"
+                        MediaType.VIDEO -> ".mp4"
+                    }
+                    val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
+                    
+                    encryptedMedia.add(SecureMedia(
+                        encryptedData = combined, 
+                        name = name, 
+                        date = System.currentTimeMillis(),
+                        mediaType = mediaType
+                    ))
                     
                     // Only add URIs that can actually be deleted (not photo picker temporary URIs)
                     val scheme = uri.scheme
@@ -150,21 +177,21 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("SecureGallery", "Failed to encrypt photo: $uri", e)
+                android.util.Log.e("SecureGallery", "Failed to encrypt media: $uri", e)
             }
         }
         
-        // Add encrypted photos to gallery
-        gallery.photos.addAll(encryptedPhotos)
-        // Save gallery data (this will persist the added photos)
+        // Add encrypted media to gallery
+        gallery.media.addAll(encryptedMedia)
+        // Save gallery data (this will persist the added media)
         GalleryManager.setContext(this)
         GalleryManager.saveGalleries()
         
         // Only prompt to delete originals if we have deletable URIs
         if (deletableUris.isNotEmpty()) {
             deleteDialog = android.app.AlertDialog.Builder(this)
-                .setTitle("Delete Original Photos?")
-                .setMessage("Do you want to delete the original photos from your device? (${deletableUris.size} of ${uris.size} photos can be deleted)")
+                .setTitle("Delete Original Files?")
+                .setMessage("Do you want to delete the original files from your device? (${deletableUris.size} of ${uris.size} files can be deleted)")
                 .setPositiveButton("Delete") { _, _ ->
                     var deletedCount = 0
                     var failedCount = 0
@@ -173,36 +200,36 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             contentResolver.delete(uri, null, null)
                             deletedCount++
                         } catch (e: Exception) {
-                            android.util.Log.e("SecureGallery", "Failed to delete original photo: $uri", e)
+                            android.util.Log.e("SecureGallery", "Failed to delete original file: $uri", e)
                             failedCount++
                         }
                     }
                     val message = if (failedCount > 0) {
-                        "Deleted $deletedCount photos, failed to delete $failedCount"
+                        "Deleted $deletedCount files, failed to delete $failedCount"
                     } else {
-                        "Original photos deleted ($deletedCount)"
+                        "Original files deleted ($deletedCount)"
                     }
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                     deleteDialog = null
-                    // Refresh gallery UI (reload photos)
+                    // Refresh gallery UI (reload media)
                     safeRecreate()
                 }
                 .setNegativeButton("Keep") { _, _ ->
                     deleteDialog = null
-                    // Refresh gallery UI (reload photos)
+                    // Refresh gallery UI (reload media)
                     safeRecreate()
                 }
                 .create()
             deleteDialog?.show()
         } else {
-            // No deletable photos - show info message if photos came from photo picker
+            // No deletable files - show info message if files came from photo picker
             val hasPickerUris = uris.any { uri -> 
                 uri.authority == "com.android.providers.media.photopicker" || uri.toString().contains("picker_get_content")
             }
             if (hasPickerUris) {
-                Toast.makeText(this, "Photos imported successfully. Original photos remain in your gallery.", Toast.LENGTH_LONG).show()
+                Toast.makeText(this, "Media imported successfully. Original files remain in your gallery.", Toast.LENGTH_LONG).show()
             }
-            // Refresh gallery UI (reload photos)
+            // Refresh gallery UI (reload media)
             safeRecreate()
         }
     }
@@ -505,9 +532,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Get gallery data from GalleryManager instead of Intent
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
         val notes = gallery?.notes ?: mutableListOf()
-        val photos = gallery?.photos ?: mutableListOf()
+        val media = gallery?.media ?: mutableListOf() // Changed from photos to media
 
-        // Apply sort order to photos
+        // Apply sort order to media
         if (gallery != null) {
             GallerySortUtils.applySortOrder(gallery)
         }
@@ -584,34 +611,51 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         notesRecyclerView.adapter = notesAdapter
 
-        // Setup photos RecyclerView with two-column grid
+        // Setup media RecyclerView with two-column grid
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
         photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
         
-        // Decrypt and display photos as thumbnails
-        val decryptedPhotos = photos.mapNotNull { photo ->
+        // Decrypt and display media as thumbnails
+        val decryptedMedia = media.mapNotNull { mediaItem ->
             if (key != null) {
-                // Try main decryption
-                try {
-                    val iv = photo.encryptedData.copyOfRange(0, 16)
-                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${photo.name}", e)
-                    
-                    // Try legacy decryption with default salt
-                    try {
-                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
-                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                        val iv = photo.encryptedData.copyOfRange(0, 16)
-                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
-                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${photo.name}")
-                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                    } catch (legacyE: Exception) {
-                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${photo.name}", legacyE)
-                        null
+                when (mediaItem.mediaType) {
+                    MediaType.PHOTO -> {
+                        // Try main decryption for photos
+                        try {
+                            val iv = mediaItem.encryptedData.copyOfRange(0, 16)
+                            val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                            val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                            MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${mediaItem.name}", e)
+                            
+                            // Try legacy decryption with default salt
+                            try {
+                                val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                                val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                                val iv = mediaItem.encryptedData.copyOfRange(0, 16)
+                                val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                                val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
+                                android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${mediaItem.name}")
+                                val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                                MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                            } catch (legacyE: Exception) {
+                                android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${mediaItem.name}", legacyE)
+                                null
+                            }
+                        }
+                    }
+                    MediaType.VIDEO -> {
+                        // Generate video thumbnail
+                        try {
+                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem.encryptedData, key)
+                            val duration = VideoUtils.getVideoDuration(mediaItem.encryptedData, key)
+                            MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SecureGallery", "Failed to generate video thumbnail: ${mediaItem.name}", e)
+                            null
+                        }
                     }
                 }
             } else {
@@ -619,23 +663,23 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             }
         }
 
-        photosAdapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
-                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
-                return PhotoThumbnailViewHolder(v)
+        photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_media_thumbnail, parent, false)
+                return MediaThumbnailViewHolder(v)
             }
-            override fun getItemCount() = if (isOrganizeMode) organizePhotos.size else decryptedPhotos.size
-            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
-                // Use organize photos if in organize mode, otherwise use decrypted photos
-                val bitmap = if (isOrganizeMode && position < organizePhotos.size) {
-                    organizePhotos[position]
-                } else if (position < decryptedPhotos.size) {
-                    decryptedPhotos[position]
+            override fun getItemCount() = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
+            override fun onBindViewHolder(holder: MediaThumbnailViewHolder, position: Int) {
+                // Use organize media if in organize mode, otherwise use decrypted media
+                val mediaThumbnail = if (isOrganizeMode && position < organizeMedia.size) {
+                    organizeMedia[position]
+                } else if (position < decryptedMedia.size) {
+                    decryptedMedia[position]
                 } else {
                     null
                 }
                 
-                holder.bind(bitmap, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
                 
                 if (isOrganizeMode) {
                     // In organize mode, disable clicks (only allow drag)
@@ -651,7 +695,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         }
                         notifyItemChanged(position)
                         
-                        // Auto-cancel delete mode if no photos are selected
+                        // Auto-cancel delete mode if no media are selected
                         if (selectedPhotosForDeletion.isEmpty()) {
                             exitDeleteMode()
                         }
@@ -660,13 +704,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     // No long press needed in delete mode
                     holder.itemView.setOnLongClickListener(null)
                 } else {
-                    // Normal mode - click to view photo
+                    // Normal mode - click to view media
                     holder.itemView.setOnClickListener {
-                        val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
-                        intent.putExtra("gallery_name", galleryName)
-                        intent.putExtra("position", position)
-                        intent.putExtra("pin", pin)
-                        intent.putExtra("salt", salt)
+                        val intent = android.content.Intent(this@GalleryActivity, SecureMediaViewerActivity::class.java)
+                        intent.putExtra(SecureMediaViewerActivity.EXTRA_GALLERY_NAME, galleryName)
+                        intent.putExtra(SecureMediaViewerActivity.EXTRA_POSITION, position)
+                        intent.putExtra(SecureMediaViewerActivity.EXTRA_PIN, pin)
+                        intent.putExtra(SecureMediaViewerActivity.EXTRA_SALT, salt)
                         photoViewerLauncher.launch(intent)
                     }
                     
@@ -824,7 +868,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Only show normal menu items, delete mode is handled by dedicated buttons
         val menuItems = listOf(
-            Pair("Add Pictures", R.id.action_add_pictures),
+            Pair("Add Media", R.id.action_add_pictures), // Changed text but keeping same ID for compatibility
             Pair("Export Photos", R.id.action_export_photos),
             Pair("Export Gallery", R.id.action_export_gallery),
             Pair("Import Gallery", R.id.action_import_gallery),
@@ -845,7 +889,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             textView.setOnClickListener {
                 val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
                 when (id) {
-                    R.id.action_add_pictures -> addPicturesToGallery()
+                    R.id.action_add_pictures -> addMediaToGallery() // Updated to use media instead of pictures
                     R.id.action_export_photos -> exportPhotosToMedia()
                     R.id.action_export_gallery -> exportGalleryToFile()
                     R.id.action_import_gallery -> importGalleryFromFile()
@@ -903,6 +947,54 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 imageView.setImageBitmap(bitmap)
             } else {
                 imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+            }
+            
+            // Handle selection overlay
+            if (isDeleteMode) {
+                // Add a semi-transparent overlay for delete mode
+                if (isSelected) {
+                    itemView.alpha = 0.6f
+                    itemView.setBackgroundColor(0x880000FF.toInt()) // Semi-transparent blue
+                } else {
+                    itemView.alpha = 1.0f
+                    itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
+                }
+            } else if (isOrganizeMode) {
+                // Add a slight green overlay for organize mode
+                itemView.alpha = 0.9f
+                itemView.setBackgroundColor(0x4400FF00.toInt()) // Semi-transparent green
+            } else {
+                // Normal mode - remove any overlays
+                itemView.alpha = 1.0f
+                itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
+            }
+        }
+    }
+    
+    class MediaThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
+        fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
+            val imageView = itemView.findViewById<android.widget.ImageView>(R.id.mediaThumbnail)
+            val playIcon = itemView.findViewById<android.widget.ImageView>(R.id.playIcon)
+            val durationText = itemView.findViewById<android.widget.TextView>(R.id.videoDuration)
+            
+            if (mediaThumbnail?.bitmap != null) {
+                imageView.setImageBitmap(mediaThumbnail.bitmap)
+            } else {
+                imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+            }
+            
+            // Show video-specific UI elements
+            if (mediaThumbnail?.mediaType == MediaType.VIDEO) {
+                playIcon.visibility = android.view.View.VISIBLE
+                if (mediaThumbnail.duration != null) {
+                    durationText.text = mediaThumbnail.duration
+                    durationText.visibility = android.view.View.VISIBLE
+                } else {
+                    durationText.visibility = android.view.View.GONE
+                }
+            } else {
+                playIcon.visibility = android.view.View.GONE
+                durationText.visibility = android.view.View.GONE
             }
             
             // Handle selection overlay
