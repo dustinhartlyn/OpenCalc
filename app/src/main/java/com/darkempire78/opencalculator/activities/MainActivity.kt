@@ -1013,7 +1013,7 @@ class MainActivity : AppCompatActivity() {
             if (gallery != null) {
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
-                Toast.makeText(this, "Gallery unlocked!", Toast.LENGTH_SHORT).show()
+                // Removed toast: Gallery unlocked!
                 // Clear calculator display as if "AC" was pressed
                 clearButton(view)
                 // Reset failed attempts and lockout

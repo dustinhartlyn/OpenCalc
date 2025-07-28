@@ -218,7 +218,7 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
 
-        Toast.makeText(this, "Opened $galleryName with ${notes.size} notes and ${photos.size} photos", Toast.LENGTH_SHORT).show()
+        // Removed toast: Opened $galleryName with ... notes and ... photos
 
         // Enable swipe-to-go-back gesture
         val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
