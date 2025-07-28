@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@+id/action_add_pictures" android:title="Add Pictures" android:showAsAction="never" />
+    <item android:id="@+id/action_add_note" android:title="Add Note" android:showAsAction="never" />
     <item android:id="@+id/action_create_gallery" android:title="Create Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_rename_gallery" android:title="Rename Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_delete_gallery" android:title="Delete Gallery" android:showAsAction="never" />
+    
+    <!-- Delete mode menu items -->
+    <item android:id="@+id/action_delete_selected" android:title="Delete Selected" android:showAsAction="always" android:visible="false" />
+    <item android:id="@+id/action_cancel_delete" android:title="Cancel" android:showAsAction="always" android:visible="false" />
 </menu>

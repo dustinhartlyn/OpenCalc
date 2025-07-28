@@ -21,6 +21,9 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     private var deleteDialog: android.app.AlertDialog? = null
+    private var isDeleteMode = false
+    private val selectedPhotosForDeletion = mutableSetOf<Int>()
+    private var photosAdapter: RecyclerView.Adapter<PhotoThumbnailViewHolder>? = null
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -35,7 +38,7 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     // Activity result launcher for adding multiple pictures
-    private val addPicturesLauncher = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+    private val addPicturesLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) {
             handleSelectedImages(uris)
         }
@@ -43,7 +46,7 @@ class GalleryActivity : AppCompatActivity() {
 
     // Handler for Add Pictures menu item
     private fun addPicturesToGallery() {
-        addPicturesLauncher.launch(arrayOf("image/*"))
+        addPicturesLauncher.launch("image/*")
     }
 
     private fun handleSelectedImages(uris: List<android.net.Uri>) {
@@ -109,6 +112,61 @@ class GalleryActivity : AppCompatActivity() {
             // Refresh gallery UI (reload photos) if no deletion prompt
             recreate()
         }
+    }
+
+    private fun enterDeleteMode() {
+        isDeleteMode = true
+        selectedPhotosForDeletion.clear()
+        
+        // Update the action bar
+        supportActionBar?.title = "Select photos to delete"
+        
+        // Refresh the adapter to show checkboxes
+        photosAdapter?.notifyDataSetChanged()
+    }
+
+    private fun exitDeleteMode() {
+        isDeleteMode = false
+        selectedPhotosForDeletion.clear()
+        
+        // Restore the original action bar title
+        val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
+        supportActionBar?.title = galleryName
+        
+        // Refresh the adapter to hide checkboxes
+        photosAdapter?.notifyDataSetChanged()
+    }
+
+    private fun deleteSelectedPhotos() {
+        if (selectedPhotosForDeletion.isEmpty()) return
+        
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        // Sort indices in descending order to avoid index shifting issues
+        val sortedIndices = selectedPhotosForDeletion.sortedDescending()
+        
+        for (index in sortedIndices) {
+            if (index < gallery.photos.size) {
+                gallery.photos.removeAt(index)
+            }
+        }
+        
+        // Save gallery data
+        GalleryManager.saveGalleries()
+        
+        // Exit delete mode and refresh UI
+        exitDeleteMode()
+        recreate()
+    }
+
+    override fun onCreateOptionsMenu(menu: android.view.Menu?): Boolean {
+        // Don't use the standard options menu, we use custom hamburger menu
+        return false
+    }
+
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
+        return super.onOptionsItemSelected(item)
     }
 
     override fun onDestroy() {
@@ -191,27 +249,51 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
 
-        photosRecyclerView.adapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
+        photosAdapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
                 val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
                 return PhotoThumbnailViewHolder(v)
             }
             override fun getItemCount() = decryptedPhotos.size
             override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
-                holder.bind(decryptedPhotos[position])
+                holder.bind(decryptedPhotos[position], isDeleteMode, selectedPhotosForDeletion.contains(position))
                 
-                // Set click listener to open full-screen photo viewer
-                holder.itemView.setOnClickListener {
-                    val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
-                    // Don't pass the heavy photo data, just pass identifiers
-                    intent.putExtra("gallery_name", galleryName)
-                    intent.putExtra("position", position)
-                    intent.putExtra("pin", pin)
-                    intent.putExtra("salt", salt)
-                    photoViewerLauncher.launch(intent)
+                if (isDeleteMode) {
+                    // In delete mode, clicking toggles selection
+                    holder.itemView.setOnClickListener {
+                        if (selectedPhotosForDeletion.contains(position)) {
+                            selectedPhotosForDeletion.remove(position)
+                        } else {
+                            selectedPhotosForDeletion.add(position)
+                        }
+                        notifyItemChanged(position)
+                    }
+                    
+                    // No long press needed in delete mode
+                    holder.itemView.setOnLongClickListener(null)
+                } else {
+                    // Normal mode - click to view photo
+                    holder.itemView.setOnClickListener {
+                        val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
+                        intent.putExtra("gallery_name", galleryName)
+                        intent.putExtra("position", position)
+                        intent.putExtra("pin", pin)
+                        intent.putExtra("salt", salt)
+                        photoViewerLauncher.launch(intent)
+                    }
+                    
+                    // Long press to enter delete mode
+                    holder.itemView.setOnLongClickListener {
+                        enterDeleteMode()
+                        selectedPhotosForDeletion.add(position)
+                        notifyDataSetChanged()
+                        true
+                    }
                 }
             }
         }
+        
+        photosRecyclerView.adapter = photosAdapter
 
         // Removed toast: Opened $galleryName with ... notes and ... photos
 
@@ -340,15 +422,27 @@ class GalleryActivity : AppCompatActivity() {
 
     private fun showCustomGalleryMenu() {
         val dialog = Dialog(this)
-        val menuItems = listOf(
-            Pair("Add Pictures", R.id.action_add_pictures),
-            Pair("Create Gallery", R.id.action_create_gallery),
-            Pair("Rename Gallery", R.id.action_rename_gallery),
-            Pair("Delete Gallery", R.id.action_delete_gallery)
-        )
+        
+        val menuItems = if (isDeleteMode) {
+            // Delete mode menu
+            listOf(
+                Pair("Delete Selected", R.id.action_delete_selected),
+                Pair("Cancel", R.id.action_cancel_delete)
+            )
+        } else {
+            // Normal mode menu
+            listOf(
+                Pair("Add Pictures", R.id.action_add_pictures),
+                Pair("Create Gallery", R.id.action_create_gallery),
+                Pair("Rename Gallery", R.id.action_rename_gallery),
+                Pair("Delete Gallery", R.id.action_delete_gallery)
+            )
+        }
+        
         val container = android.widget.LinearLayout(this)
         container.orientation = android.widget.LinearLayout.VERTICAL
         container.setBackgroundColor(android.graphics.Color.WHITE)
+        
         for ((title, id) in menuItems) {
             val itemView = LayoutInflater.from(this).inflate(R.layout.custom_popup_menu_item, container, false)
             val textView = itemView.findViewById<TextView>(R.id.menuItemText)
@@ -360,6 +454,8 @@ class GalleryActivity : AppCompatActivity() {
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
+                    R.id.action_delete_selected -> deleteSelectedPhotos()
+                    R.id.action_cancel_delete -> exitDeleteMode()
                 }
                 dialog.dismiss()
             }
@@ -380,12 +476,28 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     class PhotoThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(bitmap: android.graphics.Bitmap?) {
+        fun bind(bitmap: android.graphics.Bitmap?, isDeleteMode: Boolean = false, isSelected: Boolean = false) {
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.photoThumbnail)
             if (bitmap != null) {
                 imageView.setImageBitmap(bitmap)
             } else {
                 imageView.setImageResource(android.R.drawable.ic_menu_gallery)
+            }
+            
+            // Handle selection overlay
+            if (isDeleteMode) {
+                // Add a semi-transparent overlay for delete mode
+                if (isSelected) {
+                    itemView.alpha = 0.6f
+                    itemView.setBackgroundColor(0x880000FF) // Semi-transparent blue
+                } else {
+                    itemView.alpha = 1.0f
+                    itemView.setBackgroundColor(0x00000000) // Transparent
+                }
+            } else {
+                // Normal mode - remove any overlays
+                itemView.alpha = 1.0f
+                itemView.setBackgroundColor(0x00000000) // Transparent
             }
         }
     }
