@@ -399,13 +399,15 @@ class GalleryActivity : AppCompatActivity() {
                 val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
                 return PhotoThumbnailViewHolder(v)
             }
-            override fun getItemCount() = decryptedPhotos.size
+            override fun getItemCount() = if (isOrganizeMode) organizePhotos.size else decryptedPhotos.size
             override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
                 // Use organize photos if in organize mode, otherwise use decrypted photos
                 val bitmap = if (isOrganizeMode && position < organizePhotos.size) {
                     organizePhotos[position]
-                } else {
+                } else if (position < decryptedPhotos.size) {
                     decryptedPhotos[position]
+                } else {
+                    null
                 }
                 
                 holder.bind(bitmap, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
@@ -767,7 +769,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
         organizePhotos.clear()
         organizePhotos.addAll(gallery.photos.map { photo ->
@@ -778,12 +780,16 @@ class GalleryActivity : AppCompatActivity() {
                     val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                     android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to decrypt photo in organize mode: ${photo.name}", e)
                     null
                 }
             } else {
+                android.util.Log.w("SecureGallery", "No key available for photo decryption in organize mode")
                 null
             }
         })
+        
+        android.util.Log.d("SecureGallery", "Organize mode: ${organizePhotos.size} photos prepared (${organizePhotos.count { it != null }} non-null)")
         
         // Change action bar title
         supportActionBar?.title = "Organize Photos - Hold & Drag to Reorder"
@@ -861,13 +867,95 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun recreatePhotosAdapter() {
-        // This will be called to refresh the photos adapter with or without drag functionality
-        // The actual drag-and-drop implementation will be added to the adapter creation
+        // Recreate the photos adapter to handle organize mode properly
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
-        photosAdapter?.let { adapter ->
-            photosRecyclerView.adapter = null
-            photosRecyclerView.adapter = adapter
+        
+        // Get current decrypted photos if not in organize mode
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        
+        val decryptedPhotos = gallery.photos.mapNotNull { photo ->
+            if (key != null) {
+                try {
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
+                    null
+                }
+            } else {
+                null
+            }
         }
+        
+        photosAdapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
+                return PhotoThumbnailViewHolder(v)
+            }
+            override fun getItemCount() = if (isOrganizeMode) organizePhotos.size else decryptedPhotos.size
+            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
+                // Use organize photos if in organize mode, otherwise use decrypted photos
+                val bitmap = if (isOrganizeMode && position < organizePhotos.size) {
+                    organizePhotos[position]
+                } else if (position < decryptedPhotos.size) {
+                    decryptedPhotos[position]
+                } else {
+                    null
+                }
+                
+                holder.bind(bitmap, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                
+                if (isOrganizeMode) {
+                    // In organize mode, disable clicks (only allow drag)
+                    holder.itemView.setOnClickListener(null)
+                    holder.itemView.setOnLongClickListener(null)
+                } else if (isDeleteMode) {
+                    // In delete mode, clicking toggles selection
+                    holder.itemView.setOnClickListener {
+                        if (selectedPhotosForDeletion.contains(position)) {
+                            selectedPhotosForDeletion.remove(position)
+                        } else {
+                            selectedPhotosForDeletion.add(position)
+                        }
+                        notifyItemChanged(position)
+                        
+                        // Auto-cancel delete mode if no photos are selected
+                        if (selectedPhotosForDeletion.isEmpty()) {
+                            exitDeleteMode()
+                        }
+                    }
+                    
+                    // No long press needed in delete mode
+                    holder.itemView.setOnLongClickListener(null)
+                } else {
+                    // Normal mode - click to view photo
+                    holder.itemView.setOnClickListener {
+                        val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
+                        intent.putExtra("gallery_name", galleryName)
+                        intent.putExtra("position", position)
+                        intent.putExtra("pin", pin)
+                        intent.putExtra("salt", salt)
+                        photoViewerLauncher.launch(intent)
+                    }
+                    
+                    // Long press to enter delete mode
+                    holder.itemView.setOnLongClickListener {
+                        enterDeleteMode()
+                        selectedPhotosForDeletion.add(position)
+                        notifyDataSetChanged()
+                        true
+                    }
+                }
+            }
+        }
+        
+        photosRecyclerView.adapter = photosAdapter
     }
     
     private fun setupDragAndDrop(recyclerView: RecyclerView) {
