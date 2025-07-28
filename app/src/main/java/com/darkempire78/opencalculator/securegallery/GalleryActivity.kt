@@ -24,8 +24,15 @@ import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 
-class GalleryActivity : AppCompatActivity() {
+class GalleryActivity : AppCompatActivity(), SensorEventListener {
     companion object {
         const val PHOTO_VIEWER_REQUEST = 1002
     }
@@ -43,6 +50,12 @@ class GalleryActivity : AppCompatActivity() {
     // Organize mode for drag-and-drop reordering
     private var isOrganizeMode = false
     private var organizePhotos = mutableListOf<android.graphics.Bitmap?>()
+    
+    // Security features
+    private lateinit var sensorManager: SensorManager
+    private var accelerometer: Sensor? = null
+    private var isActivityVisible = true
+    private var screenOffReceiver: BroadcastReceiver? = null
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -328,7 +341,82 @@ class GalleryActivity : AppCompatActivity() {
     override fun onDestroy() {
         deleteDialog?.dismiss()
         deleteDialog = null
+        cleanupSecurity()
         super.onDestroy()
+    }
+    
+    override fun onPause() {
+        super.onPause()
+        isActivityVisible = false
+        // Security feature: close gallery when app loses focus
+        closeGalleryForSecurity()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        isActivityVisible = true
+    }
+    
+    // Security feature implementations
+    private fun initializeSecurity() {
+        // Initialize accelerometer
+        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        
+        // Register accelerometer listener
+        accelerometer?.let { sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+        }
+        
+        // Register screen off receiver
+        screenOffReceiver = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                    closeGalleryForSecurity()
+                }
+            }
+        }
+        
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        registerReceiver(screenOffReceiver, filter)
+    }
+    
+    private fun cleanupSecurity() {
+        // Unregister accelerometer listener
+        sensorManager.unregisterListener(this)
+        
+        // Unregister screen off receiver
+        screenOffReceiver?.let { receiver ->
+            try {
+                unregisterReceiver(receiver)
+            } catch (e: Exception) {
+                // Receiver might not be registered
+            }
+        }
+        screenOffReceiver = null
+    }
+    
+    private fun closeGalleryForSecurity() {
+        finish() // Close gallery and return to calculator
+    }
+    
+    // SensorEventListener implementation for accelerometer
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+            val x = event.values[0]
+            val y = event.values[1]
+            val z = event.values[2]
+            
+            // Check if phone is face down (Z-axis negative with significant magnitude)
+            // Threshold of -8.0 for face down detection (gravity is ~9.8, allowing for some tolerance)
+            if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
+                closeGalleryForSecurity()
+            }
+        }
+    }
+    
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Not needed for this implementation
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -337,6 +425,9 @@ class GalleryActivity : AppCompatActivity() {
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
+        
+        // Initialize security features
+        initializeSecurity()
 
         val galleryName = intent.getStringExtra("gallery_name") ?: "Gallery"
         
