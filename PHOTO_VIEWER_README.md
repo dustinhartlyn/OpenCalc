@@ -75,6 +75,15 @@ implementation("androidx.viewpager2:viewpager2:1.0.0")
 - **Enhanced Zoom Controls**: Added backup tap listeners and proper scale configuration
 - **Improved Swipe Detection**: Better handling of swipe-down-to-dismiss gesture
 - **Added Debug Logging**: Logs help identify gesture detection issues
+- **Custom ViewPager2**: Implemented intelligent gesture routing for proper pan vs swipe behavior
+- **Edge Detection**: Pan within zoomed image, swipe to next photo only at image edges
+- **Enhanced Touch Handling**: Proper separation of zoom/pan vs navigation gestures
+
+### Advanced Features:
+- **Smart Gesture Routing**: When zoomed in, panning is handled by PhotoView until image edge is reached
+- **Edge-to-Edge Navigation**: Continue panning at image edge to switch to next/previous photo
+- **Improved Swipe Down**: Better gesture detection for closing the viewer
+- **Conflict Resolution**: Custom ViewPager2 prevents gesture conflicts between zoom/pan and navigation
 
 ### Technical Notes:
 - **Memory Efficient**: Only loads photos when needed, doesn't pass large data through Intents

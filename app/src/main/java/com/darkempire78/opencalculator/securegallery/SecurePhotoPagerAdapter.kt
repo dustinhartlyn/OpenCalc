@@ -3,7 +3,9 @@ package com.darkempire78.opencalculator.securegallery
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Log
+import android.view.GestureDetector
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.darkempire78.opencalculator.R
@@ -20,6 +22,23 @@ class SecurePhotoPagerAdapter(
 
     inner class PhotoViewHolder(val photoView: PhotoView) : RecyclerView.ViewHolder(photoView) {
         
+        private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+                if (e1 != null && photoView.scale <= 1.1f) {
+                    val deltaY = e2.y - e1.y
+                    val deltaX = e2.x - e1.x
+                    
+                    // Check for downward swipe to dismiss
+                    if (deltaY > 150 && abs(deltaY) > abs(deltaX) && velocityY > 800) {
+                        Log.d("SecurePhotoPagerAdapter", "Swipe down detected - dismissing")
+                        onDismiss(adapterPosition)
+                        return true
+                    }
+                }
+                return false
+            }
+        })
+        
         init {
             // Enable all PhotoView features
             photoView.isZoomable = true
@@ -29,20 +48,16 @@ class SecurePhotoPagerAdapter(
             
             // Use PhotoView's built-in tap listener for zoom functionality
             photoView.setOnPhotoTapListener { view, x, y ->
-                // Single tap to zoom in/out by 300%
                 Log.d("SecurePhotoPagerAdapter", "Photo tapped at scale: ${photoView.scale}")
                 if (photoView.scale > 1.1f) {
-                    // If zoomed in, zoom out to fit screen
                     photoView.setScale(1f, true)
                 } else {
-                    // If at normal size, zoom in to 300%
                     photoView.setScale(3f, true)
                 }
             }
             
             // Use PhotoView's built-in view tap listener as backup
             photoView.setOnViewTapListener { view, x, y ->
-                // Alternative tap handling if photo tap doesn't work
                 Log.d("SecurePhotoPagerAdapter", "View tapped at scale: ${photoView.scale}")
                 if (photoView.scale > 1.1f) {
                     photoView.setScale(1f, true)
@@ -51,30 +66,23 @@ class SecurePhotoPagerAdapter(
                 }
             }
             
-            // Use PhotoView's matrix change listener to detect when user returns to normal scale
-            photoView.setOnMatrixChangeListener { matrix ->
-                Log.d("SecurePhotoPagerAdapter", "Matrix changed, current scale: ${photoView.scale}")
+            // Custom touch handling for swipe down to dismiss
+            photoView.setOnTouchListener { v, event ->
+                // Let gesture detector handle fling gestures for dismiss
+                val gestureHandled = gestureDetector.onTouchEvent(event)
+                
+                // If not handled by gesture detector, let PhotoView handle it
+                if (!gestureHandled) {
+                    // Return false to let PhotoView handle zoom/pan
+                    false
+                } else {
+                    true
+                }
             }
             
-            // Use PhotoView's built-in single fling listener for swipe down to dismiss
-            photoView.setOnSingleFlingListener { e1, e2, velocityX, velocityY ->
-                Log.d("SecurePhotoPagerAdapter", "Fling detected: scale=${photoView.scale}, velocityY=$velocityY, velocityX=$velocityX")
-                // Only handle swipe down to dismiss when at normal zoom level
-                if (photoView.scale <= 1.1f) {
-                    val deltaY = e2.y - e1.y
-                    val deltaX = e2.x - e1.x
-                    
-                    // Check if it's a downward swipe (and not primarily horizontal)
-                    if (deltaY > 200 && abs(deltaY) > abs(deltaX) && velocityY > 1000) {
-                        Log.d("SecurePhotoPagerAdapter", "Dismissing photo viewer")
-                        onDismiss(adapterPosition)
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+            // Use PhotoView's matrix change listener to detect scale changes
+            photoView.setOnMatrixChangeListener { matrix ->
+                Log.d("SecurePhotoPagerAdapter", "Matrix changed, current scale: ${photoView.scale}")
             }
         }
     }

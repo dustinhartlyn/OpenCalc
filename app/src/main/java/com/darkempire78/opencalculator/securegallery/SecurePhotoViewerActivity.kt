@@ -1,14 +1,16 @@
 package com.darkempire78.opencalculator.securegallery
 
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
 import com.darkempire78.opencalculator.R
+import kotlin.math.abs
 
 class SecurePhotoViewerActivity : AppCompatActivity() {
-    private lateinit var viewPager: ViewPager2
+    private lateinit var viewPager: CustomViewPager2
     private lateinit var adapter: SecurePhotoPagerAdapter
     private var photos: List<SecurePhoto> = listOf()
     private var startPosition: Int = 0
@@ -62,12 +64,6 @@ class SecurePhotoViewerActivity : AppCompatActivity() {
         }
 
         viewPager = findViewById(R.id.photoViewPager)
-        
-        // Configure ViewPager2 for horizontal scrolling only
-        viewPager.orientation = ViewPager2.ORIENTATION_HORIZONTAL
-        
-        // Reduce ViewPager2 sensitivity to allow vertical gestures to pass through
-        viewPager.isUserInputEnabled = true
         
         adapter = SecurePhotoPagerAdapter(this, photos, galleryPin, gallerySalt) { position ->
             // Callback when swipe down to dismiss

@@ -4,7 +4,7 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <androidx.viewpager2.widget.ViewPager2
+    <com.darkempire78.opencalculator.securegallery.CustomViewPager2
         android:id="@+id/photoViewPager"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
