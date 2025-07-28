@@ -1021,6 +1021,8 @@ class MainActivity : AppCompatActivity() {
             if (gallery != null) {
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
+                // Clear security trigger to allow gallery access
+                com.darkempire78.opencalculator.securegallery.TempPinHolder.clearSecurityTrigger()
                 // Removed toast: Gallery unlocked!
                 // Clear calculator display as if "AC" was pressed
                 clearButton(view)
