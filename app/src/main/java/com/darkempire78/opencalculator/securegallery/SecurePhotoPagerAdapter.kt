@@ -3,49 +3,20 @@ package com.darkempire78.opencalculator.securegallery
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.util.Log
-import android.view.GestureDetector
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.darkempire78.opencalculator.R
 import com.github.chrisbanes.photoview.PhotoView
-import kotlin.math.abs
 
 class SecurePhotoPagerAdapter(
     private val context: Context,
     private val photos: List<SecurePhoto>,
     private val pin: String?,
-    private val salt: ByteArray?,
-    private val onDismiss: (Int) -> Unit
+    private val salt: ByteArray?
 ) : RecyclerView.Adapter<SecurePhotoPagerAdapter.PhotoViewHolder>() {
 
     inner class PhotoViewHolder(val photoView: PhotoView) : RecyclerView.ViewHolder(photoView) {
-        
-        private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
-            override fun onDown(e: MotionEvent): Boolean {
-                Log.d("SecurePhotoPagerAdapter", "Gesture down detected at (${e.x}, ${e.y})")
-                return true // Return true to indicate we want to process gestures
-            }
-            
-            override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
-                Log.d("SecurePhotoPagerAdapter", "Fling detected: velocityX=$velocityX, velocityY=$velocityY")
-                if (e1 != null && photoView.scale <= 1.1f) {
-                    val deltaY = e2.y - e1.y
-                    val deltaX = e2.x - e1.x
-                    
-                    Log.d("SecurePhotoPagerAdapter", "Fling details: deltaY=$deltaY, deltaX=$deltaX, scale=${photoView.scale}")
-                    
-                    // Check for downward swipe to dismiss
-                    if (deltaY > 150 && abs(deltaY) > abs(deltaX) && velocityY > 800) {
-                        Log.d("SecurePhotoPagerAdapter", "Swipe down detected - dismissing")
-                        onDismiss(adapterPosition)
-                        return true
-                    }
-                }
-                return false
-            }
-        })
         
         init {
             // Enable all PhotoView features
@@ -80,16 +51,10 @@ class SecurePhotoPagerAdapter(
                 }
             }
             
-            // Simple touch listener that only tracks swipe-down gestures for dismiss
-            // Always returns false so PhotoView handles all zoom/pan gestures normally
-            photoView.setOnTouchListener { v, event ->
-                // Let gesture detector track for swipe-down dismiss only
-                gestureDetector.onTouchEvent(event)
-                // Always return false to let PhotoView handle all gestures
-                false
-            }
+            // Remove any custom touch listener to let PhotoView handle all touch events
+            // Swipe-down dismiss is now handled in CustomViewPager2
             
-            Log.d("SecurePhotoPagerAdapter", "PhotoView touch listeners configured with swipe-down dismiss")
+            Log.d("SecurePhotoPagerAdapter", "PhotoView touch listeners configured - PhotoView only")
             
             // Use PhotoView's matrix change listener to detect scale changes
             photoView.setOnMatrixChangeListener { matrix ->

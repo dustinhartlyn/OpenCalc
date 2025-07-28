@@ -3,6 +3,7 @@ package com.darkempire78.opencalculator.securegallery
 import android.content.Context
 import android.util.AttributeSet
 import android.util.Log
+import android.view.GestureDetector
 import android.view.MotionEvent
 import android.widget.FrameLayout
 import androidx.viewpager2.widget.ViewPager2
@@ -18,9 +19,42 @@ class CustomViewPager2 @JvmOverloads constructor(
     private val viewPager2: ViewPager2 = ViewPager2(context)
     private var initialX = 0f
     private var initialY = 0f
+    private var onDismissCallback: ((Int) -> Unit)? = null
+    
+    private val gestureDetector = GestureDetector(context, object : GestureDetector.SimpleOnGestureListener() {
+        override fun onDown(e: MotionEvent): Boolean {
+            Log.d("CustomViewPager2", "Gesture down detected at (${e.x}, ${e.y})")
+            return true
+        }
+        
+        override fun onFling(e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float): Boolean {
+            Log.d("CustomViewPager2", "Fling detected: velocityX=$velocityX, velocityY=$velocityY")
+            if (e1 != null) {
+                val currentPhotoView = getCurrentPhotoView()
+                if (currentPhotoView != null && currentPhotoView.scale <= 1.1f) {
+                    val deltaY = e2.y - e1.y
+                    val deltaX = e2.x - e1.x
+                    
+                    Log.d("CustomViewPager2", "Fling details: deltaY=$deltaY, deltaX=$deltaX, scale=${currentPhotoView.scale}")
+                    
+                    // Check for downward swipe to dismiss
+                    if (deltaY > 150 && abs(deltaY) > abs(deltaX) && velocityY > 800) {
+                        Log.d("CustomViewPager2", "Swipe down detected - dismissing")
+                        onDismissCallback?.invoke(viewPager2.currentItem)
+                        return true
+                    }
+                }
+            }
+            return false
+        }
+    })
 
     init {
         addView(viewPager2, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+    
+    fun setOnDismissCallback(callback: (Int) -> Unit) {
+        onDismissCallback = callback
     }
 
     // Delegate properties and methods to ViewPager2
@@ -58,20 +92,42 @@ class CustomViewPager2 @JvmOverloads constructor(
                 initialX = ev.x
                 initialY = ev.y
                 Log.d("CustomViewPager2", "ACTION_DOWN at (${ev.x}, ${ev.y}) - NOT intercepting")
-                // Never intercept on ACTION_DOWN - always let child views get the touch event first
+                // Track gestures but don't intercept yet
+                gestureDetector.onTouchEvent(ev)
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                // Temporarily disable all custom interception logic to test PhotoView
-                Log.d("CustomViewPager2", "ACTION_MOVE - NOT intercepting (testing mode)")
+                // Track potential swipe gestures
+                gestureDetector.onTouchEvent(ev)
+                
+                val currentPhotoView = getCurrentPhotoView()
+                if (currentPhotoView != null && currentPhotoView.scale <= 1.1f) {
+                    val deltaY = ev.y - initialY
+                    val deltaX = ev.x - initialX
+                    
+                    // Only intercept if this looks like a strong downward swipe
+                    if (deltaY > 100 && abs(deltaY) > abs(deltaX) * 2) {
+                        Log.d("CustomViewPager2", "Intercepting for potential swipe-down dismiss")
+                        return true
+                    }
+                }
+                
+                Log.d("CustomViewPager2", "ACTION_MOVE - NOT intercepting")
                 return false
             }
         }
         Log.d("CustomViewPager2", "Other action: ${ev.action} - NOT intercepting")
-        return false // Default to not intercepting
+        gestureDetector.onTouchEvent(ev)
+        return false
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        // If we intercepted the event, let our gesture detector handle it
+        val gestureHandled = gestureDetector.onTouchEvent(event)
+        if (gestureHandled) {
+            return true
+        }
+        // Otherwise let ViewPager2 handle it
         return viewPager2.onTouchEvent(event) || super.onTouchEvent(event)
     }
 

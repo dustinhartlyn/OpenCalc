@@ -65,8 +65,10 @@ class SecurePhotoViewerActivity : AppCompatActivity() {
 
         viewPager = findViewById(R.id.photoViewPager)
         
-        adapter = SecurePhotoPagerAdapter(this, photos, galleryPin, gallerySalt) { position ->
-            // Callback when swipe down to dismiss
+        adapter = SecurePhotoPagerAdapter(this, photos, galleryPin, gallerySalt)
+        
+        // Set up the dismiss callback on the CustomViewPager2
+        viewPager.setOnDismissCallback { position ->
             setResult(RESULT_OK, intent.putExtra("return_position", position))
             finish()
         }
