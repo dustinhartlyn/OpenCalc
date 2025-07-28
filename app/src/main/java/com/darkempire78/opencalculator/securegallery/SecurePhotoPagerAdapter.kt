@@ -98,8 +98,29 @@ class SecurePhotoPagerAdapter(
                     holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
                 }
             } catch (e: Exception) {
-                Log.e("SecurePhotoPagerAdapter", "Failed to decrypt photo: ${photo.name}", e)
-                holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+                Log.e("SecurePhotoPagerAdapter", "Primary decryption failed for photo: ${photo.name}", e)
+                
+                // Try legacy decryption with default salt
+                try {
+                    Log.d("SecurePhotoPagerAdapter", "Attempting legacy decryption for photo: ${photo.name}")
+                    val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                    val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                    val iv = photo.encryptedData.copyOfRange(0, 16)
+                    val ciphertext = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
+                    val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                    
+                    if (bitmap != null) {
+                        Log.d("SecurePhotoPagerAdapter", "Legacy decryption succeeded for photo: ${photo.name}")
+                        holder.photoView.setImageBitmap(bitmap)
+                    } else {
+                        Log.e("SecurePhotoPagerAdapter", "Legacy decryption produced null bitmap for photo: ${photo.name}")
+                        holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+                    }
+                } catch (legacyE: Exception) {
+                    Log.e("SecurePhotoPagerAdapter", "Both primary and legacy decryption failed for photo: ${photo.name}", legacyE)
+                    holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+                }
             }
         } else {
             Log.e("SecurePhotoPagerAdapter", "Missing pin or salt for decryption")

@@ -380,14 +380,28 @@ class GalleryActivity : AppCompatActivity() {
         // Decrypt and display photos as thumbnails
         val decryptedPhotos = photos.mapNotNull { photo ->
             if (key != null) {
+                // Try main decryption
                 try {
                     val iv = photo.encryptedData.copyOfRange(0, 16)
                     val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
                     val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                     android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
-                    null
+                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${photo.name}", e)
+                    
+                    // Try legacy decryption with default salt
+                    try {
+                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                        val iv = photo.encryptedData.copyOfRange(0, 16)
+                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
+                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${photo.name}")
+                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                    } catch (legacyE: Exception) {
+                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${photo.name}", legacyE)
+                        null
+                    }
                 }
             } else {
                 null
@@ -771,17 +785,43 @@ class GalleryActivity : AppCompatActivity() {
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
+        android.util.Log.d("SecureGallery", "Organize mode setup: pin='$pin', salt=${salt?.contentToString()}, galleryName='$galleryName'")
+        android.util.Log.d("SecureGallery", "Gallery details: id=${gallery.id}, photoCount=${gallery.photos.size}, hasHash=${gallery.pinHash != null}")
+        
+        if (key == null) {
+            android.util.Log.e("SecureGallery", "Cannot derive key: pin='$pin', salt is null=${salt == null}")
+            Toast.makeText(this, "Cannot organize photos: decryption key unavailable", Toast.LENGTH_LONG).show()
+            return
+        }
+        
         organizePhotos.clear()
-        organizePhotos.addAll(gallery.photos.map { photo ->
+        organizePhotos.addAll(gallery.photos.mapIndexed { index, photo ->
             if (key != null) {
+                // Try main decryption
                 try {
+                    android.util.Log.d("SecureGallery", "Decrypting photo $index (${photo.name}): data size=${photo.encryptedData.size}")
                     val iv = photo.encryptedData.copyOfRange(0, 16)
                     val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    android.util.Log.d("SecureGallery", "Photo $index: IV size=${iv.size}, CT size=${ct.size}")
                     val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                     android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to decrypt photo in organize mode: ${photo.name}", e)
-                    null
+                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo ${photo.name} (index $index)", e)
+                    
+                    // Try legacy decryption with default salt
+                    try {
+                        android.util.Log.d("SecureGallery", "Attempting legacy decryption for photo $index")
+                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                        val iv = photo.encryptedData.copyOfRange(0, 16)
+                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
+                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo $index")
+                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                    } catch (legacyE: Exception) {
+                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo ${photo.name} (index $index)", legacyE)
+                        null
+                    }
                 }
             } else {
                 android.util.Log.w("SecureGallery", "No key available for photo decryption in organize mode")
@@ -879,14 +919,28 @@ class GalleryActivity : AppCompatActivity() {
         
         val decryptedPhotos = gallery.photos.mapNotNull { photo ->
             if (key != null) {
+                // Try main decryption
                 try {
                     val iv = photo.encryptedData.copyOfRange(0, 16)
                     val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
                     val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                     android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to decrypt photo: ${photo.name}", e)
-                    null
+                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${photo.name}", e)
+                    
+                    // Try legacy decryption with default salt
+                    try {
+                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                        val iv = photo.encryptedData.copyOfRange(0, 16)
+                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
+                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${photo.name}")
+                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                    } catch (legacyE: Exception) {
+                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${photo.name}", legacyE)
+                        null
+                    }
                 }
             } else {
                 null
