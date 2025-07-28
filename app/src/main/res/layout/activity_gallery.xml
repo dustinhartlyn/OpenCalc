@@ -65,14 +65,47 @@
         android:background="#616161"
         android:padding="8dp">
         
-        <TextView
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Notes"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:textColor="@android:color/white"
-            android:paddingBottom="8dp" />
+            android:orientation="horizontal">
+            
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Notes"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/white"
+                android:paddingBottom="8dp" />
+                
+            <Button
+                android:id="@+id/deleteNotesButton"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Delete"
+                android:textSize="12sp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:layout_marginEnd="4dp"
+                android:visibility="gone"
+                android:backgroundTint="#D32F2F"
+                android:textColor="@android:color/white" />
+            
+            <Button
+                android:id="@+id/cancelNotesButton"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Cancel"
+                android:textSize="12sp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:visibility="gone"
+                android:backgroundTint="#757575"
+                android:textColor="@android:color/white" />
+                
+        </LinearLayout>
         
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/notesRecyclerView"

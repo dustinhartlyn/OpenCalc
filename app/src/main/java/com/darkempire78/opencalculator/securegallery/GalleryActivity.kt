@@ -192,6 +192,10 @@ class GalleryActivity : AppCompatActivity() {
         isNoteDeleteMode = true
         selectedNotesForDeletion.clear()
         
+        // Show note delete mode buttons
+        findViewById<android.widget.Button>(R.id.deleteNotesButton).visibility = android.view.View.VISIBLE
+        findViewById<android.widget.Button>(R.id.cancelNotesButton).visibility = android.view.View.VISIBLE
+        
         // Refresh the adapter to show checkboxes
         notesAdapter?.notifyDataSetChanged()
     }
@@ -199,6 +203,10 @@ class GalleryActivity : AppCompatActivity() {
     private fun exitNoteDeleteMode() {
         isNoteDeleteMode = false
         selectedNotesForDeletion.clear()
+        
+        // Hide note delete mode buttons
+        findViewById<android.widget.Button>(R.id.deleteNotesButton).visibility = android.view.View.GONE
+        findViewById<android.widget.Button>(R.id.cancelNotesButton).visibility = android.view.View.GONE
         
         // Refresh the adapter to hide checkboxes
         notesAdapter?.notifyDataSetChanged()
@@ -451,6 +459,9 @@ class GalleryActivity : AppCompatActivity() {
             showCustomGalleryMenu()
         }
         
+        // Set initial title to gallery name
+        supportActionBar?.title = galleryName
+        
         // Setup delete mode buttons
         val deleteButton = findViewById<android.widget.Button>(R.id.deleteButton)
         val cancelButton = findViewById<android.widget.Button>(R.id.cancelButton)
@@ -467,6 +478,18 @@ class GalleryActivity : AppCompatActivity() {
         val addNoteButton = findViewById<android.widget.Button>(R.id.addNoteButton)
         addNoteButton.setOnClickListener {
             openNoteEditor(-1, "", "")
+        }
+        
+        // Setup note delete mode buttons
+        val deleteNotesButton = findViewById<android.widget.Button>(R.id.deleteNotesButton)
+        val cancelNotesButton = findViewById<android.widget.Button>(R.id.cancelNotesButton)
+        
+        deleteNotesButton.setOnClickListener {
+            deleteSelectedNotes()
+        }
+        
+        cancelNotesButton.setOnClickListener {
+            exitNoteDeleteMode()
         }
     }
 
