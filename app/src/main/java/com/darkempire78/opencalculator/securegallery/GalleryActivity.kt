@@ -362,7 +362,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     override fun onResume() {
         super.onResume()
         isActivityVisible = true
-        // Don't reset security trigger here - only reset on successful gallery entry
+        // Reset security trigger when activity becomes visible again after being paused
+        // This ensures security works again after each legitimate return to gallery
+        TempPinHolder.clearSecurityTrigger()
     }
     
     // Security feature implementations
