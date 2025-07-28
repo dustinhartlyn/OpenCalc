@@ -71,6 +71,14 @@ class SecurePhotoPagerAdapter(
         if (pin != null && salt != null) {
             try {
                 val key = CryptoUtils.deriveKey(pin, salt)
+                
+                // Ensure we have enough data for IV and ciphertext
+                if (photo.encryptedData.size < 16) {
+                    Log.e("SecurePhotoPagerAdapter", "Encrypted data too small for photo: ${photo.name}")
+                    holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+                    return
+                }
+                
                 val iv = photo.encryptedData.copyOfRange(0, 16)
                 val ciphertext = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
                 val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)

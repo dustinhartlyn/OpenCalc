@@ -11,6 +11,11 @@ I've implemented a full-screen photo viewer for your secure gallery app with the
 5. **Swipe Down to Dismiss** - Swipe down to return to gallery (when at normal zoom)
 6. **Return to Original Position** - Gallery remembers and scrolls to the photo you were viewing
 
+### Bug Fix Applied:
+- **TransactionTooLargeException Fix**: Modified to pass only gallery identifiers instead of large encrypted photo data through Intent
+- **Memory Optimization**: Photos are now loaded from GalleryManager instead of being passed through Intent parcels
+- **Enhanced Error Handling**: Added validation for encrypted data size and better error recovery
+
 ### Files Created/Modified:
 
 #### New Files:
@@ -34,20 +39,22 @@ implementation("androidx.viewpager2:viewpager2:1.0.0")
 ### How It Works:
 
 1. **Opening Photos**: When you tap a photo thumbnail in the gallery, it launches `SecurePhotoViewerActivity`
-2. **Photo Decryption**: The viewer receives encrypted photos and decrypts them using the gallery pin and salt
-3. **Zoom Controls**: 
+2. **Data Loading**: The viewer receives gallery name and position, then loads photos from GalleryManager (avoiding parcel size limits)
+3. **Photo Decryption**: Photos are decrypted using the gallery pin and salt
+4. **Zoom Controls**: 
    - Single tap toggles between normal (fit screen) and 300% zoom
    - PhotoView handles pinch-to-zoom and pan gestures automatically
-4. **Navigation**:
+5. **Navigation**:
    - Swipe left/right moves between photos (ViewPager2)
    - Swipe down dismisses the viewer and returns to gallery
-5. **State Preservation**: When returning to gallery, it scrolls to the photo you were viewing
+6. **State Preservation**: When returning to gallery, it scrolls to the photo you were viewing
 
 ### Security Features:
 - Photos are decrypted in memory only
 - Uses the same encryption key derivation as the rest of the app
 - Full-screen mode hides system UI for privacy
 - No photos are stored unencrypted
+- No large data passed through system parcels
 
 ### Usage Instructions:
 1. **Open Photo**: Tap any photo thumbnail in the gallery
@@ -57,4 +64,10 @@ implementation("androidx.viewpager2:viewpager2:1.0.0")
 5. **Next/Previous**: Swipe left or right to view other photos
 6. **Exit**: Swipe down to return to the gallery
 
-The implementation maintains the security and encryption features of your existing gallery while providing a smooth, intuitive photo viewing experience.
+### Technical Notes:
+- **Memory Efficient**: Only loads photos when needed, doesn't pass large data through Intents
+- **Robust Error Handling**: Handles corrupted encrypted data gracefully
+- **Android Parcel Limit Compliant**: Avoids the 1MB Binder transaction limit
+- **Smooth Performance**: Uses ViewPager2 for optimized photo swiping
+
+The implementation maintains the security and encryption features of your existing gallery while providing a smooth, intuitive photo viewing experience that won't crash due to large data transfers.

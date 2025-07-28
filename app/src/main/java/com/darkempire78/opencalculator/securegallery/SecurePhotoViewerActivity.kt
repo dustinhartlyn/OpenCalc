@@ -10,7 +10,7 @@ import com.darkempire78.opencalculator.R
 class SecurePhotoViewerActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
     private lateinit var adapter: SecurePhotoPagerAdapter
-    private var originalPhotos: ArrayList<SecurePhoto> = arrayListOf()
+    private var photos: List<SecurePhoto> = listOf()
     private var startPosition: Int = 0
     private var galleryPin: String? = null
     private var gallerySalt: ByteArray? = null
@@ -40,14 +40,29 @@ class SecurePhotoViewerActivity : AppCompatActivity() {
         setContentView(R.layout.activity_secure_photo_viewer)
 
         // Get data from intent
-        @Suppress("DEPRECATION")
-        originalPhotos = intent.getSerializableExtra("photos") as? ArrayList<SecurePhoto> ?: arrayListOf()
+        val galleryName = intent.getStringExtra("gallery_name") ?: ""
         startPosition = intent.getIntExtra("position", 0)
         galleryPin = intent.getStringExtra("pin")
         gallerySalt = intent.getByteArrayExtra("salt")
 
+        // Initialize GalleryManager and get photos from the gallery
+        GalleryManager.setContext(this)
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        photos = gallery?.photos ?: listOf()
+
+        if (photos.isEmpty()) {
+            // No photos to display, finish the activity
+            finish()
+            return
+        }
+
+        // Ensure start position is within bounds
+        if (startPosition >= photos.size) {
+            startPosition = 0
+        }
+
         viewPager = findViewById(R.id.photoViewPager)
-        adapter = SecurePhotoPagerAdapter(this, originalPhotos, galleryPin, gallerySalt) { position ->
+        adapter = SecurePhotoPagerAdapter(this, photos, galleryPin, gallerySalt) { position ->
             // Callback when swipe down to dismiss
             setResult(RESULT_OK, intent.putExtra("return_position", position))
             finish()

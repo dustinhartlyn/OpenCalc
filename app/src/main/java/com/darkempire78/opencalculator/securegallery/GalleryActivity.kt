@@ -208,7 +208,8 @@ class GalleryActivity : AppCompatActivity() {
                 // Set click listener to open full-screen photo viewer
                 holder.itemView.setOnClickListener {
                     val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
-                    intent.putExtra("photos", ArrayList(photos))
+                    // Don't pass the heavy photo data, just pass identifiers
+                    intent.putExtra("gallery_name", galleryName)
                     intent.putExtra("position", position)
                     intent.putExtra("pin", pin)
                     intent.putExtra("salt", salt)
