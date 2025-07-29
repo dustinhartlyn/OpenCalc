@@ -856,9 +856,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         
         // Clean up orphaned video thumbnails
-        val galleryName = intent.getStringExtra("gallery_name") ?: ""
-        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
-        val media = gallery?.media ?: mutableListOf()
         if (gallery != null && media.isNotEmpty()) {
             VideoUtils.cleanupOrphanedThumbnails(this, media)
         }
