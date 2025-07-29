@@ -586,6 +586,46 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             // After thumbnail generation is complete, load them on UI thread
             runOnUiThread {
                 loadGeneratedThumbnails(encryptedMedia, galleryName, key!!)
+                
+                // Only prompt to delete originals if we have deletable URIs
+                if (deletableUris.isNotEmpty()) {
+                    deleteDialog = android.app.AlertDialog.Builder(this@GalleryActivity)
+                        .setTitle("Delete Original Files?")
+                        .setMessage("Do you want to delete the original files from your device? (${deletableUris.size} of ${originalUris.size} files can be deleted)")
+                        .setPositiveButton("Delete") { _, _ ->
+                            var deletedCount = 0
+                            var failedCount = 0
+                            for (uri in deletableUris) {
+                                try {
+                                    contentResolver.delete(uri, null, null)
+                                    deletedCount++
+                                } catch (e: Exception) {
+                                    android.util.Log.e("SecureGallery", "Failed to delete original file: $uri", e)
+                                    failedCount++
+                                }
+                            }
+                            val message = if (failedCount > 0) {
+                                "Deleted $deletedCount files, failed to delete $failedCount"
+                            } else {
+                                "Original files deleted ($deletedCount)"
+                            }
+                            Toast.makeText(this@GalleryActivity, message, Toast.LENGTH_SHORT).show()
+                            deleteDialog = null
+                        }
+                        .setNegativeButton("Keep") { _, _ ->
+                            deleteDialog = null
+                        }
+                        .create()
+                    deleteDialog?.show()
+                } else {
+                    // No deletable files - show info message if files came from photo picker
+                    val hasPickerUris = originalUris.any { uri -> 
+                        uri.authority == "com.android.providers.media.photopicker" || uri.toString().contains("picker_get_content")
+                    }
+                    if (hasPickerUris) {
+                        Toast.makeText(this@GalleryActivity, "Media imported successfully. Original files remain in your gallery.", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }.start()
         
@@ -620,46 +660,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Refresh the UI to show new media immediately
         photosAdapter?.notifyDataSetChanged()
-        
-        // Only prompt to delete originals if we have deletable URIs
-        if (deletableUris.isNotEmpty()) {
-            deleteDialog = android.app.AlertDialog.Builder(this)
-                .setTitle("Delete Original Files?")
-                .setMessage("Do you want to delete the original files from your device? (${deletableUris.size} of ${originalUris.size} files can be deleted)")
-                .setPositiveButton("Delete") { _, _ ->
-                    var deletedCount = 0
-                    var failedCount = 0
-                    for (uri in deletableUris) {
-                        try {
-                            contentResolver.delete(uri, null, null)
-                            deletedCount++
-                        } catch (e: Exception) {
-                            android.util.Log.e("SecureGallery", "Failed to delete original file: $uri", e)
-                            failedCount++
-                        }
-                    }
-                    val message = if (failedCount > 0) {
-                        "Deleted $deletedCount files, failed to delete $failedCount"
-                    } else {
-                        "Original files deleted ($deletedCount)"
-                    }
-                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                    deleteDialog = null
-                }
-                .setNegativeButton("Keep") { _, _ ->
-                    deleteDialog = null
-                }
-                .create()
-            deleteDialog?.show()
-        } else {
-            // No deletable files - show info message if files came from photo picker
-            val hasPickerUris = originalUris.any { uri -> 
-                uri.authority == "com.android.providers.media.photopicker" || uri.toString().contains("picker_get_content")
-            }
-            if (hasPickerUris) {
-                Toast.makeText(this, "Media imported successfully. Original files remain in your gallery.", Toast.LENGTH_LONG).show()
-            }
-        }
     }
 
     private fun enterDeleteMode() {
