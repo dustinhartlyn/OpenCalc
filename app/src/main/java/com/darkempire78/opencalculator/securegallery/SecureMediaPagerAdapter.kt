@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
@@ -253,9 +254,27 @@ class SecureMediaPagerAdapter(
         try {
             Log.d("SecureMediaPagerAdapter", "Setting up video view for: $videoName, file exists: ${tempFile.exists()}, file size: ${tempFile.length()}")
             
+            // First, let's try to get video information to verify the file is valid
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(tempFile.absolutePath)
+                val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)
+                val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
+                val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                val mimeType = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_MIMETYPE)
+                Log.d("SecureMediaPagerAdapter", "Video metadata - Width: $width, Height: $height, Duration: $duration, MimeType: $mimeType")
+                retriever.release()
+            } catch (e: Exception) {
+                Log.e("SecureMediaPagerAdapter", "Failed to read video metadata for $videoName", e)
+                retriever.release()
+                holder.loadingIndicator.visibility = View.GONE
+                return
+            }
+            
             val uri = Uri.fromFile(tempFile)
             Log.d("SecureMediaPagerAdapter", "Created URI: $uri")
             
+            // Set video URI first
             holder.videoView.setVideoURI(uri)
             Log.d("SecureMediaPagerAdapter", "Video URI set successfully")
             
@@ -315,13 +334,22 @@ class SecureMediaPagerAdapter(
             
             Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
             
-            // Add a timeout to detect if VideoView never calls onPrepared
+            // Add a shorter timeout to detect if VideoView never calls onPrepared
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (holder.loadingIndicator.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
-                    holder.loadingIndicator.visibility = View.GONE
+                    Log.w("SecureMediaPagerAdapter", "Attempting to force video preparation...")
+                    
+                    // Try to manually start the video preparation
+                    try {
+                        holder.videoView.requestFocus()
+                        holder.videoView.start()
+                    } catch (e: Exception) {
+                        Log.e("SecureMediaPagerAdapter", "Failed to force video start", e)
+                        holder.loadingIndicator.visibility = View.GONE
+                    }
                 }
-            }, 10000) // 10 second timeout
+            }, 5000) // Reduced to 5 second timeout
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
