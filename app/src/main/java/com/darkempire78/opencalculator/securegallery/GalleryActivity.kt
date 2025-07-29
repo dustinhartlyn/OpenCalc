@@ -413,112 +413,78 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Load only initial thumbnails quickly, then load rest in background
     private fun loadInitialThumbnails(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
-        // With pre-generated thumbnails, we can load more at once since they're much faster
-        val initialCount = minOf(10, media.size) // Increased from 2 to 10 since thumbnails are pre-generated
+        android.util.Log.d("SecureGallery", "Starting loadInitialThumbnails with ${media.size} media items")
+        
+        // Initialize the decryptedMedia list with nulls to maintain proper indexing
+        runOnUiThread {
+            decryptedMedia.clear()
+            repeat(media.size) { decryptedMedia.add(null) }
+            photosAdapter?.notifyDataSetChanged()
+            android.util.Log.d("SecureGallery", "Initialized decryptedMedia list with ${media.size} slots")
+        }
         
         thumbnailExecutor.execute {
-            val initialThumbnails = mutableListOf<MediaThumbnail>()
-            
-            // Load thumbnails quickly since they're pre-generated
-            for (i in 0 until initialCount) {
-                val thumbnail = loadThumbnailOptimized(media[i], key, i)
+            // Load all thumbnails sequentially to maintain order
+            media.forEachIndexed { index, mediaItem ->
+                android.util.Log.d("SecureGallery", "Loading thumbnail for position $index: ${mediaItem.name}")
+                
+                val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
                 if (thumbnail != null) {
-                    initialThumbnails.add(thumbnail)
-                    
-                    // Update UI immediately for each thumbnail
                     runOnUiThread {
-                        decryptedMedia.add(thumbnail)
-                        photosAdapter?.notifyItemInserted(decryptedMedia.size - 1)
-                        android.util.Log.d("SecureGallery", "Initial thumbnail loaded: ${decryptedMedia.size}")
+                        if (index < decryptedMedia.size) {
+                            decryptedMedia[index] = thumbnail
+                            photosAdapter?.notifyItemChanged(index)
+                            android.util.Log.d("SecureGallery", "Set thumbnail at position $index: ${mediaItem.name}")
+                        } else {
+                            android.util.Log.e("SecureGallery", "Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
+                        }
                     }
-                    
-                    // Very short delay since thumbnails are pre-generated and small
-                    Thread.sleep(10)
+                } else {
+                    android.util.Log.w("SecureGallery", "Failed to load thumbnail for position $index: ${mediaItem.name}")
                 }
+                
+                // Small delay to prevent overwhelming the system
+                Thread.sleep(50)
             }
             
-            android.util.Log.d("SecureGallery", "Initial thumbnails completed: ${initialThumbnails.size}")
-            
-            // Load remaining thumbnails with minimal delay
-            if (media.size > initialCount) {
-                Thread.sleep(50) // Much shorter delay
-                loadRemainingThumbnails(media.subList(initialCount, media.size), key, initialCount)
-            }
+            android.util.Log.d("SecureGallery", "Completed loading all thumbnails")
         }
-    }
-    
-    // Load remaining thumbnails asynchronously with optimized timing for pre-generated thumbnails
-    private fun loadRemainingThumbnails(remainingMedia: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec, startIndex: Int) {
-        Thread {
-            val loadedThumbnails = mutableListOf<MediaThumbnail>()
-            val batchSize = 5 // Process in batches
-            
-            remainingMedia.forEachIndexed { index, mediaItem ->
-                // Check if we should pause due to user interaction (but with shorter pause)
-                while (shouldPauseThumbnailLoading()) {
-                    Thread.sleep(50)
-                    android.util.Log.d("SecureGallery", "Pausing thumbnail loading due to user interaction")
-                }
-                
-                val thumbnail = loadThumbnailOptimized(mediaItem, key, startIndex + index)
-                if (thumbnail != null) {
-                    loadedThumbnails.add(thumbnail)
-                    android.util.Log.d("SecureGallery", "Loaded thumbnail ${loadedThumbnails.size}/${remainingMedia.size}")
-                }
-                
-                // Update UI in batches or when we reach the end
-                if (loadedThumbnails.size >= batchSize || index == remainingMedia.size - 1) {
-                    val currentBatch = loadedThumbnails.toList()
-                    
-                    runOnUiThread {
-                        val startPosition = decryptedMedia.size
-                        decryptedMedia.addAll(currentBatch)
-                        photosAdapter?.notifyItemRangeInserted(startPosition, currentBatch.size)
-                        
-                        android.util.Log.d("SecureGallery", "Added batch: ${decryptedMedia.size}/${startIndex + remainingMedia.size} total thumbnails")
-                    }
-                    
-                    loadedThumbnails.clear()
-                    
-                    // Short delay between batches
-                    Thread.sleep(20)
-                }
-            }
-            
-            android.util.Log.d("SecureGallery", "All remaining thumbnails loaded: ${decryptedMedia.size} total")
-        }.start()
     }
 
     private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+        android.util.Log.d("SecureGallery", "loadThumbnailsAsync called with ${media.size} media items")
         Thread {
-            val loadedThumbnails = mutableListOf<MediaThumbnail>()
-            val batchSize = 5 // Process thumbnails in batches to reduce UI thread pressure
+            // Find the starting index for new media
+            val startIndex = decryptedMedia.size
+            android.util.Log.d("SecureGallery", "Adding new media starting at index $startIndex")
             
-            media.forEachIndexed { index, mediaItem ->
-                val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
+            // First extend the decryptedMedia list to accommodate new items
+            runOnUiThread {
+                repeat(media.size) { decryptedMedia.add(null) }
+                photosAdapter?.notifyDataSetChanged()
+                android.util.Log.d("SecureGallery", "Extended decryptedMedia to size ${decryptedMedia.size}")
+            }
+            
+            // Load thumbnails for new media
+            media.forEachIndexed { localIndex, mediaItem ->
+                val globalIndex = startIndex + localIndex
+                android.util.Log.d("SecureGallery", "Loading new thumbnail at position $globalIndex: ${mediaItem.name}")
+                
+                val thumbnail = loadThumbnailOptimized(mediaItem, key, globalIndex)
                 if (thumbnail != null) {
-                    loadedThumbnails.add(thumbnail)
-                    
-                    // Update UI in batches or when we reach the end
-                    if (loadedThumbnails.size % batchSize == 0 || index == media.size - 1) {
-                        val currentBatch = loadedThumbnails.toList()
-                        
-                        runOnUiThread {
-                            val startPosition = decryptedMedia.size
-                            decryptedMedia.addAll(currentBatch)
-                            photosAdapter?.notifyItemRangeInserted(startPosition, currentBatch.size)
-                            
-                            // Log progress
-                            android.util.Log.d("SecureGallery", "Loaded batch: ${decryptedMedia.size}/${media.size} thumbnails")
+                    runOnUiThread {
+                        if (globalIndex < decryptedMedia.size) {
+                            decryptedMedia[globalIndex] = thumbnail
+                            photosAdapter?.notifyItemChanged(globalIndex)
+                            android.util.Log.d("SecureGallery", "Set new thumbnail at position $globalIndex")
                         }
-                        
-                        loadedThumbnails.clear()
-                        
-                        // Add a small delay between batches to prevent overwhelming the system
-                        Thread.sleep(50)
                     }
                 }
+                
+                Thread.sleep(50)
             }
+            
+            android.util.Log.d("SecureGallery", "Completed loading ${media.size} new thumbnails")
         }.start()
     }
     
