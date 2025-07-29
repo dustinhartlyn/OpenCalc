@@ -286,7 +286,7 @@ class SecureMediaPagerAdapter(
                 // Use preloaded file immediately
                 val activity = activityRef.get()
                 activity?.runOnUiThread {
-                    setupVideoView(holder, media.name, preloadedFile)
+                    setupVideoView(holder, preloadedFile, media.name)
                 }
                 return
             }

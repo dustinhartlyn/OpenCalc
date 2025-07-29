@@ -156,10 +156,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         val encryptedMedia = mutableListOf<SecureMedia>()
         val deletableUris = mutableListOf<android.net.Uri>()
+        val originalUris = uris // Store original URIs for finishMediaImport
         
-        // Process media in background to avoid blocking UI
-        Thread {
-            var processedCount = 0
         // Process media in background to avoid blocking UI
         Thread {
             var processedCount = 0
@@ -213,7 +211,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 
                                 // Generate and save thumbnail in background to avoid blocking UI
                                 try {
-                                    VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
+                                    VideoUtils.generateAndSaveThumbnail(this@GalleryActivity, secureMedia, key)
                                     Log.d("SecureGallery", "Background thumbnail generation completed for ${secureMedia.name}")
                                 } catch (e: Exception) {
                                     Log.e("SecureGallery", "Failed to generate thumbnail in background for ${secureMedia.name}", e)
@@ -286,7 +284,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     // Optimized thumbnail loading with caching
-    private fun loadThumbnailOptimized(mediaItem: SecureMedia, key: javax.crypto.SecretKey?, position: Int): MediaThumbnail? {
+    private fun loadThumbnailOptimized(mediaItem: SecureMedia, key: javax.crypto.spec.SecretKeySpec?, position: Int): MediaThumbnail? {
         val cacheKey = "${mediaItem.id}_${mediaItem.mediaType}"
         
         // Check cache first
@@ -356,7 +354,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     // Preload thumbnails for smooth scrolling
-    private fun preloadThumbnails(centerPosition: Int, gallery: Gallery, key: javax.crypto.SecretKey?) {
+    private fun preloadThumbnails(centerPosition: Int, gallery: Gallery, key: javax.crypto.spec.SecretKeySpec?) {
         if (key == null) return
         
         Thread {
@@ -373,7 +371,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }.start()
     }
     
-    private fun finishMediaImport(encryptedMedia: List<SecureMedia>, deletableUris: List<android.net.Uri>, originalUris: List<android.net.Uri>, gallery: Gallery, key: javax.crypto.SecretKey?) {
+    private fun finishMediaImport(encryptedMedia: List<SecureMedia>, deletableUris: List<android.net.Uri>, originalUris: List<android.net.Uri>, gallery: Gallery, key: javax.crypto.spec.SecretKeySpec?) {
         
         // Add encrypted media to gallery
         gallery.media.addAll(encryptedMedia)

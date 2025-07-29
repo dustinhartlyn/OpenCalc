@@ -69,6 +69,33 @@ object CryptoUtils {
         return iv
     }
     
+    // Streaming decryption for large files to avoid OutOfMemoryError
+    fun decryptStream(inputStream: java.io.InputStream, outputStream: java.io.OutputStream, key: SecretKeySpec) {
+        val cipher = Cipher.getInstance(ALGORITHM)
+        
+        // Read IV first (16 bytes)
+        val iv = ByteArray(16)
+        inputStream.read(iv)
+        
+        cipher.init(Cipher.DECRYPT_MODE, key, IvParameterSpec(iv))
+        
+        val buffer = ByteArray(8192) // 8KB buffer
+        var bytesRead: Int
+        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            // Use update for all chunks, including the last one
+            val decrypted = cipher.update(buffer, 0, bytesRead)
+            if (decrypted != null) {
+                outputStream.write(decrypted)
+            }
+        }
+        
+        // Finalize only once at the end
+        val finalData = cipher.doFinal()
+        if (finalData.isNotEmpty()) {
+            outputStream.write(finalData)
+        }
+    }
+    
     // Generate a secure hash for PIN verification that doesn't rely on encrypted content
     fun generatePinHash(pin: String, salt: ByteArray): ByteArray {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
