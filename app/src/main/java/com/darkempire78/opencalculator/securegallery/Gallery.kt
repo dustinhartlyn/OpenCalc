@@ -24,7 +24,7 @@ class Gallery(
     private fun mediaToSecurePhoto(media: SecureMedia): SecurePhoto {
         return SecurePhoto(
             id = media.id,
-            encryptedData = media.encryptedData,
+            encryptedData = media.getEncryptedData(),
             name = media.name,
             date = media.date,
             customOrder = media.customOrder

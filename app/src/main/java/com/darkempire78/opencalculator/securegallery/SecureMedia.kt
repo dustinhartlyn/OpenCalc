@@ -11,7 +11,7 @@ enum class MediaType {
 // Data model for encrypted media (photos and videos)
 class SecureMedia(
     val id: UUID = UUID.randomUUID(),
-    val encryptedData: ByteArray,
+    private val _encryptedData: ByteArray,
     val name: String,
     val date: Long,
     val mediaType: MediaType,
@@ -41,7 +41,7 @@ class SecureMedia(
         return if (filePath != null) {
             java.io.File(filePath).readBytes()
         } else {
-            encryptedData
+            _encryptedData
         }
     }
     
@@ -55,7 +55,7 @@ class SecureMedia(
             customOrder: Int = -1
         ): SecureMedia {
             return SecureMedia(
-                encryptedData = ByteArray(0), // Empty array for file-based storage
+                _encryptedData = ByteArray(0), // Empty array for file-based storage
                 name = name,
                 date = date,
                 mediaType = mediaType,

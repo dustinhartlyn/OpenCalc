@@ -187,7 +187,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             val combined = iv + encrypted
                             
                             encryptedMedia.add(SecureMedia(
-                                encryptedData = combined,
+                                _encryptedData = combined,
                                 name = name,
                                 date = System.currentTimeMillis(),
                                 mediaType = mediaType
@@ -648,8 +648,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     MediaType.PHOTO -> {
                         // Try main decryption for photos
                         try {
-                            val iv = mediaItem.encryptedData.copyOfRange(0, 16)
-                            val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                            val encryptedData = mediaItem.getEncryptedData()
+                            val iv = encryptedData.copyOfRange(0, 16)
+                            val ct = encryptedData.copyOfRange(16, encryptedData.size)
                             val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                             val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                             MediaThumbnail(bitmap, null, mediaItem.mediaType)
@@ -660,8 +661,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             try {
                                 val legacySalt = ByteArray(16) // Empty salt for legacy photos
                                 val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                                val iv = mediaItem.encryptedData.copyOfRange(0, 16)
-                                val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                                val encryptedData = mediaItem.getEncryptedData()
+                                val iv = encryptedData.copyOfRange(0, 16)
+                                val ct = encryptedData.copyOfRange(16, encryptedData.size)
                                 val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
                                 android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${mediaItem.name}")
                                 val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
@@ -1109,9 +1111,10 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 when (mediaItem.mediaType) {
                     MediaType.PHOTO -> {
                         try {
-                            android.util.Log.d("SecureGallery", "Decrypting photo $index (${mediaItem.name}): data size=${mediaItem.encryptedData.size}")
-                            val iv = mediaItem.encryptedData.copyOfRange(0, 16)
-                            val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                            val encryptedData = mediaItem.getEncryptedData()
+                            android.util.Log.d("SecureGallery", "Decrypting photo $index (${mediaItem.name}): data size=${encryptedData.size}")
+                            val iv = encryptedData.copyOfRange(0, 16)
+                            val ct = encryptedData.copyOfRange(16, encryptedData.size)
                             val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
                             val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                             MediaThumbnail(bitmap, null, mediaItem.mediaType)
@@ -1123,8 +1126,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 android.util.Log.d("SecureGallery", "Attempting legacy decryption for photo $index")
                                 val legacySalt = ByteArray(16) // Empty salt for legacy photos
                                 val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                                val iv = mediaItem.encryptedData.copyOfRange(0, 16)
-                                val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                                val encryptedData = mediaItem.getEncryptedData()
+                                val iv = encryptedData.copyOfRange(0, 16)
+                                val ct = encryptedData.copyOfRange(16, encryptedData.size)
                                 val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
                                 val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                                 android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo $index")
@@ -1396,8 +1400,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             for ((index, photo) in gallery.photos.withIndex()) {
                 try {
                     // Decrypt photo
-                    val iv = photo.encryptedData.copyOfRange(0, 16)
-                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
+                    val encryptedData = photo.getEncryptedData()
+                    val iv = encryptedData.copyOfRange(0, 16)
+                    val ct = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = try {
                         CryptoUtils.decrypt(iv, ct, key)
                     } catch (e: Exception) {

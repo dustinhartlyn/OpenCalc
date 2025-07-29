@@ -20,7 +20,7 @@ object VideoUtils {
                 return generateVideoThumbnailFromFile(secureMedia.filePath!!, key)
             } else {
                 // For in-memory storage, use the original method
-                return generateVideoThumbnail(secureMedia.encryptedData, key)
+                return generateVideoThumbnail(secureMedia.getEncryptedData(), key)
             }
         } catch (e: Exception) {
             android.util.Log.e("VideoUtils", "Failed to generate thumbnail", e)
@@ -176,7 +176,7 @@ object VideoUtils {
         return if (secureMedia.usesExternalStorage()) {
             getVideoDurationFromFile(secureMedia.filePath!!, key)
         } else {
-            getVideoDuration(secureMedia.encryptedData, key)
+            getVideoDuration(secureMedia.getEncryptedData(), key)
         }
     }
     
