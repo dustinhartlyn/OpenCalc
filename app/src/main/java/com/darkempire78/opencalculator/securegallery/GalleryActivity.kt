@@ -47,7 +47,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var deleteDialog: android.app.AlertDialog? = null
     private var isDeleteMode = false
     private val selectedPhotosForDeletion = mutableSetOf<Int>()
-    private var photosAdapter: RecyclerView.Adapter<PhotoThumbnailViewHolder>? = null
+    private var photosAdapter: RecyclerView.Adapter<MediaThumbnailViewHolder>? = null
     
     // Note management
     private var isNoteDeleteMode = false
@@ -940,37 +940,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
     }
     
-    class PhotoThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
-        fun bind(bitmap: android.graphics.Bitmap?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
-            val imageView = itemView.findViewById<android.widget.ImageView>(R.id.photoThumbnail)
-            if (bitmap != null) {
-                imageView.setImageBitmap(bitmap)
-            } else {
-                imageView.setImageResource(android.R.drawable.ic_menu_gallery)
-            }
-            
-            // Handle selection overlay
-            if (isDeleteMode) {
-                // Add a semi-transparent overlay for delete mode
-                if (isSelected) {
-                    itemView.alpha = 0.6f
-                    itemView.setBackgroundColor(0x880000FF.toInt()) // Semi-transparent blue
-                } else {
-                    itemView.alpha = 1.0f
-                    itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
-                }
-            } else if (isOrganizeMode) {
-                // Add a slight green overlay for organize mode
-                itemView.alpha = 0.9f
-                itemView.setBackgroundColor(0x4400FF00.toInt()) // Semi-transparent green
-            } else {
-                // Normal mode - remove any overlays
-                itemView.alpha = 1.0f
-                itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
-            }
-        }
-    }
-    
     class MediaThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
         fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.mediaThumbnail)
@@ -1097,62 +1066,76 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
         android.util.Log.d("SecureGallery", "Organize mode setup: pin='$pin', salt=${salt?.contentToString()}, galleryName='$galleryName'")
-        android.util.Log.d("SecureGallery", "Gallery details: id=${gallery.id}, photoCount=${gallery.photos.size}, hasHash=${gallery.pinHash != null}")
+        android.util.Log.d("SecureGallery", "Gallery details: id=${gallery.id}, mediaCount=${gallery.media.size}, hasHash=${gallery.pinHash != null}")
         
         if (key == null) {
             android.util.Log.e("SecureGallery", "Cannot derive key: pin='$pin', salt is null=${salt == null}")
-            Toast.makeText(this, "Cannot organize photos: decryption key unavailable", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Cannot organize media: decryption key unavailable", Toast.LENGTH_LONG).show()
             return
         }
         
-        organizePhotos.clear()
-        organizePhotos.addAll(gallery.photos.mapIndexed { index, photo ->
+        organizeMedia.clear()
+        organizeMedia.addAll(gallery.media.mapIndexed { index, mediaItem ->
             if (key != null) {
-                // Try main decryption
-                try {
-                    android.util.Log.d("SecureGallery", "Decrypting photo $index (${photo.name}): data size=${photo.encryptedData.size}")
-                    val iv = photo.encryptedData.copyOfRange(0, 16)
-                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                    android.util.Log.d("SecureGallery", "Photo $index: IV size=${iv.size}, CT size=${ct.size}")
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo ${photo.name} (index $index)", e)
-                    
-                    // Try legacy decryption with default salt
-                    try {
-                        android.util.Log.d("SecureGallery", "Attempting legacy decryption for photo $index")
-                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
-                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                        val iv = photo.encryptedData.copyOfRange(0, 16)
-                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
-                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo $index")
-                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                    } catch (legacyE: Exception) {
-                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo ${photo.name} (index $index)", legacyE)
-                        null
+                when (mediaItem.mediaType) {
+                    MediaType.PHOTO -> {
+                        try {
+                            android.util.Log.d("SecureGallery", "Decrypting photo $index (${mediaItem.name}): data size=${mediaItem.encryptedData.size}")
+                            val iv = mediaItem.encryptedData.copyOfRange(0, 16)
+                            val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                            val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                            MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SecureGallery", "Primary decryption failed for photo ${mediaItem.name} (index $index)", e)
+                            
+                            // Try legacy decryption with default salt
+                            try {
+                                android.util.Log.d("SecureGallery", "Attempting legacy decryption for photo $index")
+                                val legacySalt = ByteArray(16) // Empty salt for legacy photos
+                                val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                                val iv = mediaItem.encryptedData.copyOfRange(0, 16)
+                                val ct = mediaItem.encryptedData.copyOfRange(16, mediaItem.encryptedData.size)
+                                val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
+                                val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                                android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo $index")
+                                MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                            } catch (legacyE: Exception) {
+                                android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo ${mediaItem.name} (index $index)", legacyE)
+                                null
+                            }
+                        }
+                    }
+                    MediaType.VIDEO -> {
+                        try {
+                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem.encryptedData, key)
+                            val duration = VideoUtils.getVideoDuration(mediaItem.encryptedData, key)
+                            MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
+                        } catch (e: Exception) {
+                            android.util.Log.e("SecureGallery", "Failed to generate video thumbnail for organize mode: ${mediaItem.name}", e)
+                            null
+                        }
                     }
                 }
             } else {
-                android.util.Log.w("SecureGallery", "No key available for photo decryption in organize mode")
+                android.util.Log.w("SecureGallery", "No key available for media decryption in organize mode")
                 null
             }
         })
         
-        android.util.Log.d("SecureGallery", "Organize mode: ${organizePhotos.size} photos prepared (${organizePhotos.count { it != null }} non-null)")
+        android.util.Log.d("SecureGallery", "Organize mode: ${organizeMedia.size} media items prepared (${organizeMedia.count { it != null }} non-null)")
         
         // Change action bar title
-        supportActionBar?.title = "Organize Photos - Hold & Drag to Reorder"
+        supportActionBar?.title = "Organize Media - Hold & Drag to Reorder"
         
         // Show organize mode instructions
-        Toast.makeText(this, "Hold and drag photos to reorder. Tap 'Done' when finished.", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Hold and drag media to reorder. Tap 'Done' when finished.", Toast.LENGTH_LONG).show()
         
         // Add organize mode toolbar with Done button
         showOrganizeModeToolbar()
         
         // Refresh adapter to enable drag functionality
-        recreatePhotosAdapter()
+        recreateMediaAdapter()
     }
     
     private fun exitOrganizeMode() {
@@ -1169,9 +1152,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         saveCustomOrder()
         
         // Refresh adapter to disable drag functionality
-        recreatePhotosAdapter()
+        recreateMediaAdapter()
         
-        Toast.makeText(this, "Photo order saved", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Media order saved", Toast.LENGTH_SHORT).show()
     }
     
     private fun showOrganizeModeToolbar() {
@@ -1210,71 +1193,41 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         
-        // Update gallery sort order to custom and save current photo order
+        // Update gallery sort order to custom and save current media order
         gallery.sortOrder = GallerySortOrder.CUSTOM
-        gallery.customOrder = (0 until gallery.photos.size).toMutableList()
+        gallery.customOrder = (0 until gallery.media.size).toMutableList()
         
         GalleryManager.saveGalleries()
     }
     
-    private fun recreatePhotosAdapter() {
-        // Recreate the photos adapter to handle organize mode properly
+    private fun recreateMediaAdapter() {
+        // Recreate the media adapter to handle organize mode properly
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
         
-        // Get current decrypted photos if not in organize mode
+        // Get current thumbnails if not in organize mode
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
-        val decryptedPhotos = gallery.photos.mapNotNull { photo ->
-            if (key != null) {
-                // Try main decryption
-                try {
-                    val iv = photo.encryptedData.copyOfRange(0, 16)
-                    val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                    android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${photo.name}", e)
-                    
-                    // Try legacy decryption with default salt
-                    try {
-                        val legacySalt = ByteArray(16) // Empty salt for legacy photos
-                        val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                        val iv = photo.encryptedData.copyOfRange(0, 16)
-                        val ct = photo.encryptedData.copyOfRange(16, photo.encryptedData.size)
-                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
-                        android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${photo.name}")
-                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                    } catch (legacyE: Exception) {
-                        android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${photo.name}", legacyE)
-                        null
-                    }
-                }
-            } else {
-                null
+        photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
+            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
+                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_media_thumbnail, parent, false)
+                return MediaThumbnailViewHolder(v)
             }
-        }
-        
-        photosAdapter = object : RecyclerView.Adapter<PhotoThumbnailViewHolder>() {
-            override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PhotoThumbnailViewHolder {
-                val v = LayoutInflater.from(parent.context).inflate(R.layout.item_photo_thumbnail, parent, false)
-                return PhotoThumbnailViewHolder(v)
-            }
-            override fun getItemCount() = if (isOrganizeMode) organizePhotos.size else decryptedPhotos.size
-            override fun onBindViewHolder(holder: PhotoThumbnailViewHolder, position: Int) {
-                // Use organize photos if in organize mode, otherwise use decrypted photos
-                val bitmap = if (isOrganizeMode && position < organizePhotos.size) {
-                    organizePhotos[position]
-                } else if (position < decryptedPhotos.size) {
-                    decryptedPhotos[position]
+            override fun getItemCount() = if (isOrganizeMode) organizeMedia.size else mediaThumbnails.size
+            override fun onBindViewHolder(holder: MediaThumbnailViewHolder, position: Int) {
+                // Use organize media if in organize mode, otherwise use media thumbnails
+                val mediaThumbnail = if (isOrganizeMode && position < organizeMedia.size) {
+                    organizeMedia[position]
+                } else if (position < mediaThumbnails.size) {
+                    mediaThumbnails[position]
                 } else {
                     null
                 }
                 
-                holder.bind(bitmap, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
                 
                 if (isOrganizeMode) {
                     // In organize mode, disable clicks (only allow drag)
@@ -1290,7 +1243,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         }
                         notifyItemChanged(position)
                         
-                        // Auto-cancel delete mode if no photos are selected
+                        // Auto-cancel delete mode if no media are selected
                         if (selectedPhotosForDeletion.isEmpty()) {
                             exitDeleteMode()
                         }
@@ -1299,9 +1252,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     // No long press needed in delete mode
                     holder.itemView.setOnLongClickListener(null)
                 } else {
-                    // Normal mode - click to view photo
+                    // Normal mode - click to view media
                     holder.itemView.setOnClickListener {
-                        val intent = android.content.Intent(this@GalleryActivity, SecurePhotoViewerActivity::class.java)
+                        val intent = android.content.Intent(this@GalleryActivity, SecureMediaViewerActivity::class.java)
                         intent.putExtra("gallery_name", galleryName)
                         intent.putExtra("position", position)
                         intent.putExtra("pin", pin)
