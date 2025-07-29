@@ -548,8 +548,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Move thumbnail generation to background thread to prevent memory issues
         Thread {
-            encryptedMedia.forEach { mediaItem ->
+            var processedCount = 0
+            encryptedMedia.forEachIndexed { index, mediaItem ->
                 try {
+                    android.util.Log.d("SecureGallery", "Processing ${index + 1}/${encryptedMedia.size}: ${mediaItem.name} (${mediaItem.mediaType})")
+                    
                     when (mediaItem.mediaType) {
                         MediaType.PHOTO -> {
                             // Decrypt the photo data first to generate thumbnail
@@ -559,8 +562,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
                             
                             // Generate encrypted thumbnail for photo
-                            ThumbnailGenerator.generatePhotoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
-                            android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
+                            val thumbnailPath = ThumbnailGenerator.generatePhotoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
+                            if (thumbnailPath != null) {
+                                android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
+                                processedCount++
+                            } else {
+                                android.util.Log.w("SecureGallery", "Failed to generate thumbnail for photo: ${mediaItem.name}")
+                            }
                         }
                         MediaType.VIDEO -> {
                             // For videos, we need the raw video bytes to generate thumbnail
@@ -570,14 +578,31 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
                             
                             // Generate encrypted thumbnail for video
-                            ThumbnailGenerator.generateVideoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
-                            android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
+                            val thumbnailPath = ThumbnailGenerator.generateVideoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
+                            if (thumbnailPath != null) {
+                                android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
+                                processedCount++
+                            } else {
+                                android.util.Log.w("SecureGallery", "Failed to generate thumbnail for video: ${mediaItem.name}")
+                            }
                         }
                     }
                     
-                    // Force garbage collection between items to prevent memory buildup
-                    System.gc()
+                    // Update UI with progress
+                    runOnUiThread {
+                        // Show progress to user
+                        val progress = "${processedCount}/${encryptedMedia.size} thumbnails processed"
+                        android.util.Log.d("SecureGallery", progress)
+                    }
                     
+                    // Force garbage collection and add delay between items to prevent memory buildup
+                    System.gc()
+                    Thread.sleep(100) // Small delay to prevent overwhelming the system
+                    
+                } catch (e: OutOfMemoryError) {
+                    android.util.Log.e("SecureGallery", "Out of memory while processing: ${mediaItem.name}. Forcing garbage collection.", e)
+                    System.gc()
+                    Thread.sleep(500) // Longer delay on memory error
                 } catch (e: Exception) {
                     android.util.Log.e("SecureGallery", "Failed to generate thumbnail during import for: ${mediaItem.name}", e)
                 }

@@ -137,12 +137,76 @@ class SecureMediaPagerAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val media = mediaList[position]
         when (holder) {
-            is PhotoViewHolder -> bindPhoto(holder, media)
+            is PhotoViewHolder -> {
+                bindPhoto(holder, media)
+                // Trigger intelligent preloading for smoother photo experience
+                intelligentPreloadPhotos(position)
+            }
             is VideoViewHolder -> {
                 bindVideo(holder, media)
                 // Trigger intelligent preloading for smooth video experience
                 intelligentPreload(position)
             }
+        }
+    }
+    
+    // Preload adjacent photos for smoother transitions
+    private fun intelligentPreloadPhotos(currentPosition: Int) {
+        Thread {
+            try {
+                // Preload next and previous photos
+                val positionsToPreload = listOf(currentPosition - 1, currentPosition + 1)
+                    .filter { it >= 0 && it < mediaList.size }
+                    .filter { mediaList[it].mediaType == MediaType.PHOTO }
+                
+                for (pos in positionsToPreload) {
+                    val photoMedia = mediaList[pos]
+                    preloadPhotoIfNeeded(photoMedia)
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error during photo preload", e)
+            }
+        }.start()
+    }
+    
+    private val photoPreloadCache = mutableMapOf<String, Bitmap>()
+    private val maxPhotoCache = 5
+    
+    private fun preloadPhotoIfNeeded(media: SecureMedia) {
+        if (key == null) return
+        
+        val cacheKey = media.name + "_" + media.id
+        if (photoPreloadCache.containsKey(cacheKey)) return
+        
+        try {
+            val encryptedData = media.getEncryptedData()
+            if (encryptedData.size < 16) return
+            
+            val iv = encryptedData.copyOfRange(0, 16)
+            val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+            val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+            
+            val options = BitmapFactory.Options().apply {
+                inSampleSize = 2 // Half resolution for cache
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            
+            val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+            
+            if (bitmap != null && !bitmap.isRecycled) {
+                synchronized(photoPreloadCache) {
+                    // Clean cache if too large
+                    if (photoPreloadCache.size >= maxPhotoCache) {
+                        val oldestEntry = photoPreloadCache.entries.first()
+                        oldestEntry.value.recycle()
+                        photoPreloadCache.remove(oldestEntry.key)
+                    }
+                    photoPreloadCache[cacheKey] = bitmap
+                }
+                Log.d("SecureMediaPagerAdapter", "Preloaded photo: ${media.name}")
+            }
+        } catch (e: Exception) {
+            Log.w("SecureMediaPagerAdapter", "Failed to preload photo: ${media.name}", e)
         }
     }
     
@@ -217,53 +281,198 @@ class SecureMediaPagerAdapter(
     private fun bindPhoto(holder: PhotoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading photo: ${media.name}")
         
+        // Clear previous image to prevent displaying wrong content
+        holder.cleanup()
+        
+        // First check if we have a preloaded bitmap
+        val cacheKey = media.name + "_" + media.id
+        synchronized(photoPreloadCache) {
+            photoPreloadCache[cacheKey]?.let { cachedBitmap ->
+                Log.d("SecureMediaPagerAdapter", "Using preloaded photo: ${media.name}")
+                holder.setImageBitmap(cachedBitmap)
+                return
+            }
+        }
+        
         if (key != null) {
-            try {
-                val encryptedData = media.getEncryptedData()
-                if (encryptedData.size < 16) {
-                    Log.e("SecureMediaPagerAdapter", "Encrypted data too small for photo: ${media.name}")
-                    return
-                }
-                
-                val iv = encryptedData.copyOfRange(0, 16)
-                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
-                val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                
-                if (bitmap != null) {
-                    Log.d("SecureMediaPagerAdapter", "Successfully loaded bitmap for photo: ${media.name}, size: ${bitmap.width}x${bitmap.height}")
-                    holder.setImageBitmap(bitmap)
-                } else {
-                    Log.e("SecureMediaPagerAdapter", "Failed to decode bitmap for photo: ${media.name}")
-                    holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
-                }
-            } catch (e: Exception) {
-                Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo: ${media.name}", e)
-                // Try legacy decryption with default salt
+            // Load photo in background to prevent UI blocking
+            Thread {
                 try {
-                    val legacySalt = ByteArray(16)
-                    val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
                     val encryptedData = media.getEncryptedData()
+                    if (encryptedData.size < 16) {
+                        Log.e("SecureMediaPagerAdapter", "Encrypted data too small for photo: ${media.name}")
+                        setErrorImage(holder)
+                        return@Thread
+                    }
+                    
                     val iv = encryptedData.copyOfRange(0, 16)
                     val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
-                    val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                     
-                    if (bitmap != null) {
+                    var decryptedBytes: ByteArray? = null
+                    
+                    // Try normal decryption first
+                    try {
+                        decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                    } catch (e: Exception) {
+                        Log.w("SecureMediaPagerAdapter", "Normal decryption failed for ${media.name}, trying legacy", e)
+                        // Try legacy decryption with default salt
+                        try {
+                            decryptedBytes = CryptoUtils.legacyDecrypt(encryptedData, key)
+                        } catch (legacyE: Exception) {
+                            Log.e("SecureMediaPagerAdapter", "Legacy decryption also failed for ${media.name}", legacyE)
+                        }
+                    }
+                    
+                    if (decryptedBytes == null) {
+                        setErrorImage(holder)
+                        return@Thread
+                    }
+                    
+                    var bitmap: Bitmap? = null
+                    
+                    try {
+                        // Create bitmap with proper options to prevent OutOfMemoryError
+                        val options = BitmapFactory.Options().apply {
+                            inJustDecodeBounds = true
+                        }
+                        BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+                        
+                        // Calculate inSampleSize to reduce memory usage for large images
+                        val sampleSize = calculateInSampleSize(options, 2048, 2048)
+                        
+                        val decodeOptions = BitmapFactory.Options().apply {
+                            inSampleSize = sampleSize
+                            inPreferredConfig = Bitmap.Config.ARGB_8888
+                        }
+                        
+                        bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+                        
+                    } catch (oom: OutOfMemoryError) {
+                        Log.e("SecureMediaPagerAdapter", "Out of memory loading photo: ${media.name}", oom)
+                        System.gc() // Force garbage collection
+                        
+                        // Try with more aggressive compression
+                        try {
+                            val aggressiveOptions = BitmapFactory.Options().apply {
+                                inSampleSize = 4
+                                inPreferredConfig = Bitmap.Config.RGB_565
+                            }
+                            bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, aggressiveOptions)
+                        } catch (e: Exception) {
+                            Log.e("SecureMediaPagerAdapter", "Failed to decode with aggressive options", e)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("SecureMediaPagerAdapter", "Error decoding photo: ${media.name}", e)
+                    }
+                    
+                    // Update UI on main thread
+                    activityRef.get()?.runOnUiThread {
+                        if (bitmap != null && !bitmap.isRecycled) {
+                            Log.d("SecureMediaPagerAdapter", "Successfully loaded bitmap for photo: ${media.name}, size: ${bitmap.width}x${bitmap.height}")
+                            holder.setImageBitmap(bitmap)
+                            
+                            // Cache the bitmap for future use
+                            synchronized(photoPreloadCache) {
+                                if (photoPreloadCache.size < maxPhotoCache) {
+                                    photoPreloadCache[cacheKey] = bitmap
+                                }
+                            }
+                        } else {
+                            Log.e("SecureMediaPagerAdapter", "Failed to decode bitmap for photo: ${media.name}")
+                            setErrorImage(holder)
+                        }
+                    }
+                    
+                } catch (e: Exception) {
+                    Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo: ${media.name}", e)
+                    setErrorImage(holder)
+                }
+            }.start()
+        } else {
+            Log.w("SecureMediaPagerAdapter", "No decryption key available for photo: ${media.name}")
+            setErrorImage(holder)
+        }
+    }
+    
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val height = options.outHeight
+        val width = options.outWidth
+        var inSampleSize = 1
+        
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+            
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
+    }
+    
+    private fun tryLoadSmallerImage(holder: PhotoViewHolder, media: SecureMedia) {
+        Thread {
+            try {
+                val encryptedData = media.getEncryptedData()
+                val iv = encryptedData.copyOfRange(0, 16)
+                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key!!)
+                
+                // Use more aggressive sampling for memory-constrained situations
+                val options = BitmapFactory.Options().apply {
+                    inSampleSize = 4 // Quarter resolution
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                
+                val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+                
+                activityRef.get()?.runOnUiThread {
+                    if (bitmap != null && !bitmap.isRecycled) {
+                        Log.d("SecureMediaPagerAdapter", "Loaded smaller bitmap for photo: ${media.name}")
+                        holder.setImageBitmap(bitmap)
+                    } else {
+                        setErrorImage(holder)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("SecureMediaPagerAdapter", "Failed to load smaller image for: ${media.name}", e)
+                activityRef.get()?.runOnUiThread { setErrorImage(holder) }
+            }
+        }.start()
+    }
+    
+    private fun tryLegacyDecryption(holder: PhotoViewHolder, media: SecureMedia) {
+        Thread {
+            try {
+                val legacySalt = ByteArray(16)
+                val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
+                val encryptedData = media.getEncryptedData()
+                val iv = encryptedData.copyOfRange(0, 16)
+                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
+                
+                val options = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.RGB_565
+                }
+                val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+                
+                activityRef.get()?.runOnUiThread {
+                    if (bitmap != null && !bitmap.isRecycled) {
                         Log.d("SecureMediaPagerAdapter", "Legacy decryption succeeded for photo: ${media.name}")
                         holder.setImageBitmap(bitmap)
                     } else {
-                        holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+                        setErrorImage(holder)
                     }
-                } catch (legacyE: Exception) {
-                    Log.e("SecureMediaPagerAdapter", "Both primary and legacy decryption failed for photo: ${media.name}", legacyE)
-                    holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
                 }
+            } catch (e: Exception) {
+                Log.e("SecureMediaPagerAdapter", "Both primary and legacy decryption failed for photo: ${media.name}", e)
+                activityRef.get()?.runOnUiThread { setErrorImage(holder) }
             }
-        } else {
-            Log.w("SecureMediaPagerAdapter", "No decryption key available for photo: ${media.name}")
-            holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
-        }
+        }.start()
+    }
+    
+    private fun setErrorImage(holder: PhotoViewHolder) {
+        holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
     }
     
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
@@ -653,11 +862,24 @@ class SecureMediaPagerAdapter(
             }
         }
         preloadCache.clear()
+        
+        // Cleanup photo cache
+        synchronized(photoPreloadCache) {
+            photoPreloadCache.values.forEach { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+            photoPreloadCache.clear()
+        }
+        
+        Log.d("SecureMediaPagerAdapter", "Full adapter cleanup completed")
     }
     
     class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val photoView: PhotoView = itemView.findViewById(R.id.photoView)
         private var currentBitmap: Bitmap? = null
+        private var isLoaded = false
         
         init {
             // Configure PhotoView for zoom functionality
@@ -677,28 +899,63 @@ class SecureMediaPagerAdapter(
                     photoView.setScale(3.0f, x, y, true)
                 }
             }
+            
+            // Add error listener to detect image loading issues
+            photoView.setOnViewTapListener { view, x, y ->
+                if (!isLoaded && currentBitmap == null) {
+                    Log.w("SecureMediaPagerAdapter", "Photo view tapped but image not loaded, attempting reload")
+                    // Could trigger a reload here if needed
+                }
+            }
         }
         
         fun setImageBitmap(bitmap: Bitmap?) {
-            // Recycle previous bitmap to free memory
-            currentBitmap?.let { oldBitmap ->
-                if (!oldBitmap.isRecycled) {
-                    oldBitmap.recycle()
+            Log.d("SecureMediaPagerAdapter", "Setting image bitmap: ${bitmap != null}, size: ${bitmap?.let { "${it.width}x${it.height}" } ?: "null"}")
+            
+            // Don't recycle current bitmap if it's the same as the new one
+            if (currentBitmap != bitmap) {
+                // Recycle previous bitmap to free memory
+                currentBitmap?.let { oldBitmap ->
+                    if (!oldBitmap.isRecycled) {
+                        oldBitmap.recycle()
+                        Log.d("SecureMediaPagerAdapter", "Recycled previous bitmap")
+                    }
                 }
             }
+            
             currentBitmap = bitmap
-            photoView.setImageBitmap(bitmap)
+            isLoaded = bitmap != null
+            
+            if (bitmap != null && !bitmap.isRecycled) {
+                photoView.setImageBitmap(bitmap)
+                Log.d("SecureMediaPagerAdapter", "Image bitmap set successfully")
+            } else {
+                Log.w("SecureMediaPagerAdapter", "Cannot set null or recycled bitmap")
+                photoView.setImageBitmap(null)
+            }
         }
         
         fun cleanup() {
+            Log.d("SecureMediaPagerAdapter", "Cleaning up PhotoViewHolder")
+            isLoaded = false
+            
+            // Clear the PhotoView first
+            photoView.setImageBitmap(null)
+            
+            // Then recycle the bitmap
             currentBitmap?.let { bitmap ->
                 if (!bitmap.isRecycled) {
                     bitmap.recycle()
+                    Log.d("SecureMediaPagerAdapter", "Bitmap recycled during cleanup")
                 }
             }
             currentBitmap = null
-            photoView.setImageBitmap(null)
+            
+            // Reset PhotoView scale to prevent state issues
+            photoView.setScale(1.0f, false)
         }
+        
+        fun isImageLoaded(): Boolean = isLoaded && currentBitmap != null && !currentBitmap!!.isRecycled
     }
     
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {

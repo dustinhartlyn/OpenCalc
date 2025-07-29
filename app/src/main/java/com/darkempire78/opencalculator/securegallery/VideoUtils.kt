@@ -266,6 +266,8 @@ object VideoUtils {
         var tempFile: File? = null
         var retriever: MediaMetadataRetriever? = null
         try {
+            Log.d("VideoUtils", "Starting video thumbnail generation, data size: ${decryptedVideoData.size}")
+            
             // Create a temporary file for the video
             tempFile = File.createTempFile("temp_video", ".mp4")
             tempFile.deleteOnExit()
@@ -273,19 +275,66 @@ object VideoUtils {
             // Write decrypted data to temp file
             tempFile.writeBytes(decryptedVideoData)
             
-            Log.d("VideoUtils", "Temporary video file created, size: ${tempFile.length()}")
+            Log.d("VideoUtils", "Temporary video file created: ${tempFile.absolutePath}, size: ${tempFile.length()}")
+            
+            // Verify file was written correctly
+            if (tempFile.length() == 0L) {
+                Log.e("VideoUtils", "Temporary video file is empty!")
+                return null
+            }
             
             // Use MediaMetadataRetriever to get thumbnail
             retriever = MediaMetadataRetriever()
             retriever.setDataSource(tempFile.absolutePath)
             
-            // Get frame at 1 second or 10% of duration, whichever is smaller
+            // Get video metadata for better thumbnail extraction
             val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
             val duration = durationStr?.toLongOrNull() ?: 0L
-            val timeUs = if (duration > 0) minOf(1000000L, duration * 100L) else 1000000L // 1 second or 10% of duration
+            val width = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
+            val height = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
             
-            val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            Log.d("VideoUtils", "Video thumbnail generated successfully")
+            Log.d("VideoUtils", "Video metadata - Duration: ${duration}ms, Resolution: ${width}x${height}")
+            
+            // Try multiple time positions for better thumbnail extraction
+            val timePositions = if (duration > 0) {
+                listOf(
+                    minOf(1000000L, duration * 100L), // 1 second or 10% of duration
+                    duration * 500L, // 50% of duration
+                    duration * 250L  // 25% of duration
+                )
+            } else {
+                listOf(1000000L, 2000000L, 500000L) // 1s, 2s, 0.5s
+            }
+            
+            var bitmap: android.graphics.Bitmap? = null
+            for (timeUs in timePositions) {
+                try {
+                    Log.d("VideoUtils", "Attempting to extract frame at time: ${timeUs}µs")
+                    bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (bitmap != null) {
+                        Log.d("VideoUtils", "Successfully extracted frame at time: ${timeUs}µs, bitmap size: ${bitmap.width}x${bitmap.height}")
+                        break
+                    }
+                } catch (e: Exception) {
+                    Log.w("VideoUtils", "Failed to extract frame at time ${timeUs}µs", e)
+                }
+            }
+            
+            if (bitmap == null) {
+                Log.w("VideoUtils", "Failed to extract any frame, trying without time specification")
+                try {
+                    bitmap = retriever.frameAtTime
+                } catch (e: Exception) {
+                    Log.e("VideoUtils", "Failed to extract any frame from video", e)
+                }
+            }
+            
+            if (bitmap != null) {
+                Log.d("VideoUtils", "Video thumbnail generated successfully, size: ${bitmap.width}x${bitmap.height}")
+            } else {
+                Log.e("VideoUtils", "Failed to generate video thumbnail - all attempts failed")
+            }
+            
             return bitmap
             
         } catch (e: Exception) {
