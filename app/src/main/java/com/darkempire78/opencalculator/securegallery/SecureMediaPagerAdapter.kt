@@ -389,6 +389,21 @@ class SecureMediaPagerAdapter(
                 }
             }
             
+            // Add tap-to-pause functionality for VideoView
+            holder.videoView.setOnClickListener {
+                try {
+                    if (holder.videoView.isPlaying) {
+                        holder.videoView.pause()
+                        Log.d("SecureMediaPagerAdapter", "Video paused by tap: $videoName")
+                    } else {
+                        holder.videoView.start()
+                        Log.d("SecureMediaPagerAdapter", "Video resumed by tap: $videoName")
+                    }
+                } catch (e: Exception) {
+                    Log.w("SecureMediaPagerAdapter", "Error handling VideoView tap", e)
+                }
+            }
+            
             holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
                 Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
                 holder.loadingIndicator.visibility = View.GONE
@@ -436,6 +451,23 @@ class SecureMediaPagerAdapter(
                         // Hide VideoView and show SurfaceView
                         holder.videoView.visibility = View.GONE
                         holder.surfaceView.visibility = View.VISIBLE
+                        
+                        // Add tap-to-pause functionality for SurfaceView/MediaPlayer
+                        holder.surfaceView.setOnClickListener {
+                            try {
+                                holder.mediaPlayer?.let { mp ->
+                                    if (mp.isPlaying) {
+                                        mp.pause()
+                                        Log.d("SecureMediaPagerAdapter", "MediaPlayer paused by tap: $videoName")
+                                    } else {
+                                        mp.start()
+                                        Log.d("SecureMediaPagerAdapter", "MediaPlayer resumed by tap: $videoName")
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                Log.w("SecureMediaPagerAdapter", "Error handling SurfaceView tap", e)
+                            }
+                        }
                         
                         // Wait for SurfaceView to be ready
                         holder.surfaceView.holder.addCallback(object : android.view.SurfaceHolder.Callback {

@@ -274,9 +274,18 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 }
                 MediaType.VIDEO -> {
                     try {
-                        // Use cached thumbnail if available, otherwise generate
+                        // Use cached thumbnail if available, otherwise generate using streaming
                         val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
-                        val thumbnail = cachedThumbnail ?: VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
+                        val thumbnail = if (cachedThumbnail != null) {
+                            cachedThumbnail
+                        } else {
+                            // For videos, use streaming approach to avoid memory issues
+                            if (mediaItem.usesExternalStorage()) {
+                                VideoUtils.generateVideoThumbnailFromFile(mediaItem.filePath!!, key!!)
+                            } else {
+                                VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
+                            }
+                        }
                         val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
                         MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                     } catch (e: Exception) {
