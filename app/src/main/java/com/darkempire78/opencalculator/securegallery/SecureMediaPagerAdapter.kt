@@ -512,10 +512,10 @@ class SecureMediaPagerAdapter(
                                 Log.d("SecureMediaPagerAdapter", "Surface changed: ${width}x${height}")
                             }
                             
-                            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                            override fun surfaceDestroyed(surfaceHolder: android.view.SurfaceHolder) {
                                 Log.d("SecureMediaPagerAdapter", "Surface destroyed for $videoName")
                                 // Clean up MediaPlayer when surface is destroyed
-                                mediaPlayer?.let { mp ->
+                                holder.mediaPlayer?.let { mp ->
                                     try {
                                         if (mp.isPlaying) {
                                             mp.stop()
@@ -524,7 +524,7 @@ class SecureMediaPagerAdapter(
                                     } catch (e: Exception) {
                                         Log.w("SecureMediaPagerAdapter", "Error releasing MediaPlayer on surface destroy", e)
                                     }
-                                    mediaPlayer = null
+                                    holder.mediaPlayer = null
                                 }
                             }
                         })
