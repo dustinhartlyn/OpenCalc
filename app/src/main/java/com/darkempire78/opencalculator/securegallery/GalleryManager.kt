@@ -33,7 +33,7 @@ object GalleryManager {
             name = name,
             salt = salt,
             notes = mutableListOf(), // Start with empty notes list
-            photos = mutableListOf(),
+            media = mutableListOf(),
             pinHash = pinHash
         )
         addGallery(newGallery)

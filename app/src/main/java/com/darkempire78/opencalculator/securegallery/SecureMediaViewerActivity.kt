@@ -69,13 +69,13 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         Log.d("SecureMediaViewer", "Media count: ${media.size}, starting position: $currentPosition")
         
         // Setup ViewPager2 with media adapter
-        val viewPager = findViewById<ViewPager2>(R.id.viewPager)
+        val mediaViewPager = findViewById<ViewPager2>(R.id.mediaViewPager)
         adapter = SecureMediaPagerAdapter(this, media, galleryPin, gallerySalt)
-        viewPager.adapter = adapter
-        viewPager.setCurrentItem(currentPosition, false)
+        mediaViewPager.adapter = adapter
+        mediaViewPager.setCurrentItem(currentPosition, false)
         
         // Handle page changes
-        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+        mediaViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
                 currentPosition = position
