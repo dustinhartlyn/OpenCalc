@@ -68,13 +68,14 @@ class SecureMediaPagerAdapter(
         
         if (key != null) {
             try {
-                if (media.encryptedData.size < 16) {
+                val encryptedData = media.getEncryptedData()
+                if (encryptedData.size < 16) {
                     Log.e("SecureMediaPagerAdapter", "Encrypted data too small for photo: ${media.name}")
                     return
                 }
                 
-                val iv = media.encryptedData.copyOfRange(0, 16)
-                val ciphertext = media.encryptedData.copyOfRange(16, media.encryptedData.size)
+                val iv = encryptedData.copyOfRange(0, 16)
+                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
                 val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
                 val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                 
@@ -91,8 +92,9 @@ class SecureMediaPagerAdapter(
                 try {
                     val legacySalt = ByteArray(16)
                     val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                    val iv = media.encryptedData.copyOfRange(0, 16)
-                    val ciphertext = media.encryptedData.copyOfRange(16, media.encryptedData.size)
+                    val encryptedData = media.getEncryptedData()
+                    val iv = encryptedData.copyOfRange(0, 16)
+                    val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
                     val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
                     
@@ -122,18 +124,51 @@ class SecureMediaPagerAdapter(
                 holder.loadingIndicator.visibility = View.VISIBLE
                 holder.videoView.visibility = View.GONE
                 
-                // Decrypt video data
-                val iv = media.encryptedData.copyOfRange(0, 16)
-                val ciphertext = media.encryptedData.copyOfRange(16, media.encryptedData.size)
-                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
-                
                 // Create temporary file for video playback
                 val tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
                 tempFiles.add(tempFile)
                 
-                val fos = FileOutputStream(tempFile)
-                fos.write(decryptedBytes)
-                fos.close()
+                if (media.usesExternalStorage()) {
+                    // For file-based storage, decrypt file using streaming
+                    val encryptedFile = File(media.filePath!!)
+                    val inputStream = FileInputStream(encryptedFile)
+                    val outputStream = FileOutputStream(tempFile)
+                    
+                    // Read IV from file
+                    val iv = ByteArray(16)
+                    inputStream.read(iv)
+                    
+                    // Decrypt the rest using streaming
+                    val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+                    cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
+                    
+                    val buffer = ByteArray(8192)
+                    var bytesRead: Int
+                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        val decrypted = cipher.update(buffer, 0, bytesRead)
+                        if (decrypted != null) {
+                            outputStream.write(decrypted)
+                        }
+                    }
+                    
+                    val finalData = cipher.doFinal()
+                    if (finalData.isNotEmpty()) {
+                        outputStream.write(finalData)
+                    }
+                    
+                    inputStream.close()
+                    outputStream.close()
+                } else {
+                    // For in-memory storage, decrypt normally
+                    val encryptedData = media.getEncryptedData()
+                    val iv = encryptedData.copyOfRange(0, 16)
+                    val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                    
+                    val fos = FileOutputStream(tempFile)
+                    fos.write(decryptedBytes)
+                    fos.close()
+                }
                 
                 // Setup video view
                 val uri = Uri.fromFile(tempFile)

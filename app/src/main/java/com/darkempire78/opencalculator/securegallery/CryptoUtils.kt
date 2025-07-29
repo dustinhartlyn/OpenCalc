@@ -40,6 +40,40 @@ object CryptoUtils {
         return cipher.doFinal(encrypted)
     }
     
+    // Streaming encryption for large files to avoid OutOfMemoryError
+    fun encryptStream(inputStream: java.io.InputStream, outputStream: java.io.OutputStream, key: SecretKeySpec): ByteArray {
+        val cipher = Cipher.getInstance(ALGORITHM)
+        val iv = ByteArray(16)
+        SecureRandom().nextBytes(iv)
+        cipher.init(Cipher.ENCRYPT_MODE, key, IvParameterSpec(iv))
+        
+        // Write IV first
+        outputStream.write(iv)
+        
+        val buffer = ByteArray(8192) // 8KB buffer
+        var bytesRead: Int
+        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+            val encrypted = if (bytesRead < buffer.size) {
+                // Last chunk - finalize
+                cipher.doFinal(buffer, 0, bytesRead)
+            } else {
+                // Normal chunk - update
+                cipher.update(buffer, 0, bytesRead)
+            }
+            if (encrypted != null) {
+                outputStream.write(encrypted)
+            }
+        }
+        
+        // Finalize if we haven't already
+        val finalData = cipher.doFinal()
+        if (finalData.isNotEmpty()) {
+            outputStream.write(finalData)
+        }
+        
+        return iv
+    }
+    
     // Generate a secure hash for PIN verification that doesn't rely on encrypted content
     fun generatePinHash(pin: String, salt: ByteArray): ByteArray {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")

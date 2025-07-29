@@ -142,10 +142,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         for (uri in uris) {
             try {
-                val inputStream = contentResolver.openInputStream(uri)
-                val bytes = inputStream?.readBytes() ?: continue
-                inputStream.close()
-                
                 // Determine media type based on MIME type
                 val mimeType = contentResolver.getType(uri)
                 val mediaType = when {
@@ -155,26 +151,55 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 }
                 
                 if (key != null) {
-                    val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
-                    val combined = iv + encrypted
-                    val extension = when (mediaType) {
-                        MediaType.PHOTO -> ".jpg"
-                        MediaType.VIDEO -> ".mp4"
-                    }
-                    val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
-                    
-                    encryptedMedia.add(SecureMedia(
-                        encryptedData = combined, 
-                        name = name, 
-                        date = System.currentTimeMillis(),
-                        mediaType = mediaType
-                    ))
-                    
-                    // Only add URIs that can actually be deleted (not photo picker temporary URIs)
-                    val scheme = uri.scheme
-                    val authority = uri.authority
-                    if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
-                        deletableUris.add(uri)
+                    val inputStream = contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
+                        val extension = when (mediaType) {
+                            MediaType.PHOTO -> ".jpg"
+                            MediaType.VIDEO -> ".mp4"
+                        }
+                        val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
+                        
+                        // Use different storage strategies based on media type
+                        if (mediaType == MediaType.VIDEO) {
+                            // For videos, store in external files to avoid memory issues
+                            val galleryDir = java.io.File(filesDir, "secure_gallery")
+                            if (!galleryDir.exists()) galleryDir.mkdirs()
+                            
+                            val encryptedFile = java.io.File(galleryDir, "${java.util.UUID.randomUUID()}.enc")
+                            val fileOutputStream = java.io.FileOutputStream(encryptedFile)
+                            
+                            CryptoUtils.encryptStream(inputStream, fileOutputStream, key)
+                            inputStream.close()
+                            fileOutputStream.close()
+                            
+                            encryptedMedia.add(SecureMedia.createWithFileStorage(
+                                name = name,
+                                date = System.currentTimeMillis(),
+                                mediaType = mediaType,
+                                encryptedFilePath = encryptedFile.absolutePath
+                            ))
+                        } else {
+                            // For photos, keep in-memory storage
+                            val bytes = inputStream.readBytes()
+                            inputStream.close()
+                            
+                            val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
+                            val combined = iv + encrypted
+                            
+                            encryptedMedia.add(SecureMedia(
+                                encryptedData = combined,
+                                name = name,
+                                date = System.currentTimeMillis(),
+                                mediaType = mediaType
+                            ))
+                        }
+                        
+                        // Only add URIs that can actually be deleted (not photo picker temporary URIs)
+                        val scheme = uri.scheme
+                        val authority = uri.authority
+                        if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
+                            deletableUris.add(uri)
+                        }
                     }
                 }
             } catch (e: Exception) {
@@ -650,8 +675,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     MediaType.VIDEO -> {
                         // Generate video thumbnail
                         try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem.encryptedData, key)
-                            val duration = VideoUtils.getVideoDuration(mediaItem.encryptedData, key)
+                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem, key)
+                            val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
                             android.util.Log.e("SecureGallery", "Failed to generate video thumbnail: ${mediaItem.name}", e)
@@ -1112,8 +1137,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     MediaType.VIDEO -> {
                         try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem.encryptedData, key)
-                            val duration = VideoUtils.getVideoDuration(mediaItem.encryptedData, key)
+                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem, key)
+                            val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
                             android.util.Log.e("SecureGallery", "Failed to generate video thumbnail for organize mode: ${mediaItem.name}", e)
