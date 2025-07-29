@@ -335,7 +335,7 @@ object VideoUtils {
     /**
      * Generate thumbnail from encrypted video file (file-based storage)
      */
-    private fun generateVideoThumbnailFromFile(encryptedFilePath: String, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
+    fun generateVideoThumbnailFromFile(encryptedFilePath: String, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
         var tempFile: File? = null
         var retriever: MediaMetadataRetriever? = null
         try {
