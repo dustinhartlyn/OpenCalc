@@ -703,8 +703,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             android.util.Log.d("SecureGallery", "Gallery refresh completed: ${decryptedMedia.size} thumbnails loaded")
         }
     }
-        TempPinHolder.clearSecurityTrigger()
-    }
     
     // Security feature implementations
     private fun initializeSecurity() {
@@ -787,6 +785,25 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 closeGalleryForSecurity()
             } else if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
                 android.util.Log.d("SecureGallery", "Face down detected during grace period (${timeSinceStart}ms), ignoring")
+            }
+        }
+    }
+    
+    override fun onSensorChanged(event: SensorEvent?) {
+        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER && isActivityVisible) {
+            val currentTime = System.currentTimeMillis()
+            // Grace period after activity start to prevent false triggers during app launch
+            if (currentTime - activityStartTime > 3000) { // 3 second grace period
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                val acceleration = kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
+                
+                // Detect significant device movement (shake)
+                if (acceleration > 15.0 && !isScreenOff) { // Only trigger if screen is not off
+                    android.util.Log.d("SecureGallery", "Security trigger: Device shake detected")
+                    closeGalleryForSecurity()
+                }
             }
         }
     }
