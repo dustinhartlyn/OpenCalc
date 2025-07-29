@@ -362,29 +362,39 @@ class SecureMediaPagerAdapter(
                     
                     // Try alternative approach with MediaPlayer directly
                     try {
-                        val mediaPlayer = MediaPlayer()
-                        mediaPlayer.setDataSource(tempFile.absolutePath)
-                        mediaPlayer.setDisplay(holder.videoView.holder)
+                        // Reset VideoView to ensure clean state
+                        holder.videoView.stopPlayback()
+                        holder.videoView.suspend()
                         
-                        mediaPlayer.setOnPreparedListener { mp ->
-                            Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
-                            holder.loadingIndicator.visibility = View.GONE
-                            holder.videoView.visibility = View.VISIBLE
-                            mp.isLooping = true
-                            mp.start()
-                        }
-                        
-                        mediaPlayer.setOnErrorListener { mp, what, extra ->
-                            Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
-                            holder.loadingIndicator.visibility = View.GONE
-                            mp.release()
-                            true
-                        }
-                        
-                        mediaPlayer.prepareAsync()
+                        // Wait a moment then try again with VideoView
+                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                            Log.d("SecureMediaPagerAdapter", "Retrying VideoView setup with fresh state...")
+                            
+                            // Try setting the URI again
+                            holder.videoView.setVideoURI(videoUri)
+                            
+                            // Set a new OnPreparedListener for retry
+                            holder.videoView.setOnPreparedListener { mediaPlayer ->
+                                Log.d("SecureMediaPagerAdapter", "VideoView retry prepared successfully for $videoName")
+                                holder.loadingIndicator.visibility = View.GONE
+                                holder.videoView.visibility = View.VISIBLE
+                                mediaPlayer.isLooping = true
+                                mediaPlayer.start()
+                            }
+                            
+                            // Set another timeout for the retry
+                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                if (holder.loadingIndicator.visibility == View.VISIBLE) {
+                                    Log.e("SecureMediaPagerAdapter", "VideoView retry also failed for $videoName")
+                                    holder.loadingIndicator.visibility = View.GONE
+                                    // Could add error message here if needed
+                                }
+                            }, 5000) // 5 second timeout for retry
+                        }, 500) // Wait 500ms before retry
+                        }, 500) // Wait 500ms before retry
                         
                     } catch (e: Exception) {
-                        Log.e("SecureMediaPagerAdapter", "Failed alternative MediaPlayer approach", e)
+                        Log.e("SecureMediaPagerAdapter", "Failed alternative approach for $videoName", e)
                         holder.loadingIndicator.visibility = View.GONE
                     }
                 }
