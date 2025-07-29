@@ -413,55 +413,69 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Load only initial thumbnails quickly, then load rest in background
     private fun loadInitialThumbnails(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
-        android.util.Log.d("SecureGallery", "Starting loadInitialThumbnails with ${media.size} media items")
+        android.util.Log.d("SecureGallery", "=== STARTING THUMBNAIL LOADING FOR ${media.size} MEDIA ITEMS ===")
         
-        // Initialize the decryptedMedia list with nulls to maintain proper indexing
+        // Immediately initialize the decryptedMedia list with the correct size
         runOnUiThread {
             decryptedMedia.clear()
+            // Pre-fill with nulls for all media items
             repeat(media.size) { decryptedMedia.add(null) }
+            
+            android.util.Log.d("SecureGallery", "Pre-filled decryptedMedia with ${decryptedMedia.size} null entries")
+            
+            // Notify adapter immediately so it knows the full item count
             photosAdapter?.notifyDataSetChanged()
-            android.util.Log.d("SecureGallery", "Initialized decryptedMedia list with ${media.size} slots")
+            
+            android.util.Log.d("SecureGallery", "Adapter notified of ${decryptedMedia.size} items")
         }
         
+        // Load thumbnails in background without any artificial limits
         thumbnailExecutor.execute {
-            // Load all thumbnails sequentially to maintain order
+            android.util.Log.d("SecureGallery", "Background thumbnail loading started")
+            
             media.forEachIndexed { index, mediaItem ->
-                android.util.Log.d("SecureGallery", "Loading thumbnail for position $index: ${mediaItem.name}")
-                
-                val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
-                if (thumbnail != null) {
-                    runOnUiThread {
-                        if (index < decryptedMedia.size) {
-                            decryptedMedia[index] = thumbnail
-                            photosAdapter?.notifyItemChanged(index)
-                            android.util.Log.d("SecureGallery", "Set thumbnail at position $index: ${mediaItem.name}")
-                        } else {
-                            android.util.Log.e("SecureGallery", "Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
+                try {
+                    android.util.Log.d("SecureGallery", "Loading thumbnail $index/${media.size}: ${mediaItem.name} (${mediaItem.mediaType})")
+                    
+                    val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
+                    if (thumbnail != null) {
+                        runOnUiThread {
+                            if (index < decryptedMedia.size) {
+                                decryptedMedia[index] = thumbnail
+                                photosAdapter?.notifyItemChanged(index)
+                                android.util.Log.d("SecureGallery", "✓ Successfully set thumbnail at position $index")
+                            } else {
+                                android.util.Log.e("SecureGallery", "✗ Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
+                            }
                         }
+                    } else {
+                        android.util.Log.w("SecureGallery", "✗ Failed to load thumbnail for position $index: ${mediaItem.name}")
                     }
-                } else {
-                    android.util.Log.w("SecureGallery", "Failed to load thumbnail for position $index: ${mediaItem.name}")
+                    
+                    // Brief pause to prevent overwhelming the system
+                    Thread.sleep(25) // Reduced from 50ms
+                    
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "✗ Exception loading thumbnail $index: ${mediaItem.name}", e)
                 }
-                
-                // Small delay to prevent overwhelming the system
-                Thread.sleep(50)
             }
             
-            android.util.Log.d("SecureGallery", "Completed loading all thumbnails")
+            android.util.Log.d("SecureGallery", "=== THUMBNAIL LOADING COMPLETED ===")
             
-            // Final notification to ensure UI is updated
+            // Final comprehensive UI update
             runOnUiThread {
                 val loadedCount = decryptedMedia.count { it != null }
-                android.util.Log.d("SecureGallery", "Final UI update: decryptedMedia.size = ${decryptedMedia.size}, loaded count = $loadedCount")
+                android.util.Log.d("SecureGallery", "FINAL STATUS: ${decryptedMedia.size} total slots, $loadedCount loaded thumbnails")
                 
-                // Force a complete refresh of the adapter
+                // Force complete adapter refresh
                 photosAdapter?.notifyDataSetChanged()
                 
-                // Also force the RecyclerView to re-layout
+                // Force RecyclerView to recalculate everything
                 val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
                 photosRecyclerView.requestLayout()
+                photosRecyclerView.invalidate()
                 
-                android.util.Log.d("SecureGallery", "Forced RecyclerView layout refresh")
+                android.util.Log.d("SecureGallery", "Forced complete UI refresh")
             }
         }
     }
@@ -1195,7 +1209,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
 
         // Setup media RecyclerView with two-column grid
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
-        photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
+        val gridLayoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
+        photosRecyclerView.layoutManager = gridLayoutManager
+        
+        // Ensure RecyclerView can scroll and display all items
+        photosRecyclerView.setHasFixedSize(false) // Allow dynamic sizing
+        photosRecyclerView.isNestedScrollingEnabled = true // Enable proper scrolling
         
         // Add scroll listener to pause thumbnail loading during user interaction
         photosRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
@@ -1224,7 +1243,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             }
             override fun getItemCount(): Int {
                 val count = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
-                android.util.Log.d("SecureGallery", "getItemCount() returning: $count (organize: $isOrganizeMode, decryptedMedia: ${decryptedMedia.size})")
+                android.util.Log.d("SecureGallery", "getItemCount() called: returning $count (organize: $isOrganizeMode, decryptedMedia: ${decryptedMedia.size}, organizeMedia: ${organizeMedia.size})")
+                
+                // Additional debugging for the first 20 calls
+                if (count <= 10) {
+                    val stackTrace = Thread.currentThread().stackTrace
+                    android.util.Log.d("SecureGallery", "getItemCount() stack trace preview: ${stackTrace.take(5).joinToString { it.methodName }}")
+                }
+                
                 return count
             }
             override fun onBindViewHolder(holder: MediaThumbnailViewHolder, position: Int) {

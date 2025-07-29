@@ -487,8 +487,16 @@ class SecureMediaPagerAdapter(
             // First cleanup any existing video state to prevent conflicts
             holder.cleanup()
             
-            // Set this as the current video holder AFTER cleanup
-        setCurrentVideoHolder(holder)
+            // Validate media data before proceeding
+            val encryptedData = media.getEncryptedData()
+            if (encryptedData.isEmpty()) {
+                Log.e("SecureMediaPagerAdapter", "Empty encrypted data for video: ${media.name}")
+                holder.loadingContainer.visibility = View.GONE
+                return
+            }
+            
+            // Set this as the current video holder AFTER cleanup and validation
+            setCurrentVideoHolder(holder)
         
         if (key != null) {
             // Show loading indicator
@@ -553,16 +561,32 @@ class SecureMediaPagerAdapter(
                     } else {
                         // For in-memory storage, decrypt normally
                         val encryptedData = media.getEncryptedData()
+                        if (encryptedData.size < 16) {
+                            Log.e("SecureMediaPagerAdapter", "Encrypted video data too small: ${encryptedData.size} bytes")
+                            throw IllegalStateException("Invalid encrypted video data")
+                        }
+                        
                         val iv = encryptedData.copyOfRange(0, 16)
                         val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
                         val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
                         
+                        Log.d("SecureMediaPagerAdapter", "Decrypted video data: ${decryptedBytes.size} bytes")
+                        
                         val fos = FileOutputStream(tempFile)
                         fos.write(decryptedBytes)
                         fos.close()
+                        
+                        // Clear decrypted bytes from memory immediately
+                        System.gc()
                     }
                     
                     Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
+                    
+                    // Validate the decrypted video file
+                    if (!tempFile.exists() || tempFile.length() < 1024) {
+                        Log.e("SecureMediaPagerAdapter", "Video file validation failed: exists=${tempFile.exists()}, size=${tempFile.length()}")
+                        throw IllegalStateException("Invalid decrypted video file")
+                    }
                     
                     // Force garbage collection to free up memory before video setup
                     System.gc()
