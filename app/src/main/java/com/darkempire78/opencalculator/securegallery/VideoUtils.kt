@@ -133,36 +133,22 @@ object VideoUtils {
             val iv = ByteArray(16)
             inputStream.read(iv)
             
-            // Decrypt using streaming approach
+            // Decrypt using proper streaming approach
             val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
+            // Use CipherInputStream for proper streaming decryption
+            val cipherInputStream = javax.crypto.CipherInputStream(inputStream, cipher)
+            
+            // Copy decrypted data in chunks
             val buffer = ByteArray(8192)
             var bytesRead: Int
-            
-            // Read all data first to detect last chunk properly
-            val allEncryptedData = inputStream.readBytes()
-            inputStream.close()
-            
-            // Process in chunks
-            var offset = 0
-            while (offset < allEncryptedData.size) {
-                val chunkSize = minOf(8192, allEncryptedData.size - offset)
-                val isLastChunk = (offset + chunkSize) >= allEncryptedData.size
-                
-                if (isLastChunk) {
-                    // Last chunk - use doFinal
-                    val decrypted = cipher.doFinal(allEncryptedData, offset, chunkSize)
-                    outputStream.write(decrypted)
-                } else {
-                    // Not last chunk - use update
-                    val decrypted = cipher.update(allEncryptedData, offset, chunkSize)
-                    if (decrypted != null) {
-                        outputStream.write(decrypted)
-                    }
-                }
-                offset += chunkSize
+            while (cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
             }
+            
+            cipherInputStream.close()
+            inputStream.close()
             outputStream.close()
             
             // Generate thumbnail from decrypted temp file
@@ -210,33 +196,22 @@ object VideoUtils {
             val iv = ByteArray(16)
             inputStream.read(iv)
             
-            // Decrypt using streaming approach
+            // Decrypt using proper streaming approach
             val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
-            // Read all data first to detect last chunk properly
-            val allEncryptedData = inputStream.readBytes()
-            inputStream.close()
+            // Use CipherInputStream for proper streaming decryption
+            val cipherInputStream = javax.crypto.CipherInputStream(inputStream, cipher)
             
-            // Process in chunks
-            var offset = 0
-            while (offset < allEncryptedData.size) {
-                val chunkSize = minOf(8192, allEncryptedData.size - offset)
-                val isLastChunk = (offset + chunkSize) >= allEncryptedData.size
-                
-                if (isLastChunk) {
-                    // Last chunk - use doFinal
-                    val decrypted = cipher.doFinal(allEncryptedData, offset, chunkSize)
-                    outputStream.write(decrypted)
-                } else {
-                    // Not last chunk - use update
-                    val decrypted = cipher.update(allEncryptedData, offset, chunkSize)
-                    if (decrypted != null) {
-                        outputStream.write(decrypted)
-                    }
-                }
-                offset += chunkSize
+            // Copy decrypted data in chunks
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
             }
+            
+            cipherInputStream.close()
+            inputStream.close()
             
             outputStream.close()
             
