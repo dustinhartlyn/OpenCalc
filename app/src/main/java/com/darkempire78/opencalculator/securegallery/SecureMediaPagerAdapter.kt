@@ -182,8 +182,11 @@ class SecureMediaPagerAdapter(
                     
                     Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
                     
-                    // Force garbage collection to free up memory after decryption
+                    // Force garbage collection to free up memory before video setup
                     System.gc()
+                    
+                    // Small delay to allow GC to complete
+                    Thread.sleep(100)
                     
                     // Log memory usage
                     val runtime = Runtime.getRuntime()
@@ -279,7 +282,30 @@ class SecureMediaPagerAdapter(
             holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
                 Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
                 holder.loadingIndicator.visibility = View.GONE
+                
+                // Try to provide more specific error information
+                val errorMsg = when (what) {
+                    android.media.MediaPlayer.MEDIA_ERROR_IO -> "IO Error"
+                    android.media.MediaPlayer.MEDIA_ERROR_MALFORMED -> "Malformed media"
+                    android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED -> "Unsupported media"
+                    android.media.MediaPlayer.MEDIA_ERROR_TIMED_OUT -> "Timed out"
+                    android.media.MediaPlayer.MEDIA_ERROR_SERVER_DIED -> "Server died"
+                    android.media.MediaPlayer.MEDIA_ERROR_UNKNOWN -> "Unknown error"
+                    else -> "Error code $what"
+                }
+                Log.e("SecureMediaPagerAdapter", "Video error details: $errorMsg, extra: $extra")
                 true
+            }
+            
+            holder.videoView.setOnInfoListener { mediaPlayer, what, extra ->
+                val infoMsg = when (what) {
+                    android.media.MediaPlayer.MEDIA_INFO_BUFFERING_START -> "Buffering started"
+                    android.media.MediaPlayer.MEDIA_INFO_BUFFERING_END -> "Buffering ended"
+                    android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> "Video rendering started"
+                    else -> "Info: what=$what, extra=$extra"
+                }
+                Log.d("SecureMediaPagerAdapter", "Video info for $videoName: $infoMsg")
+                false
             }
             
             holder.videoView.setOnCompletionListener { mediaPlayer ->
@@ -288,6 +314,14 @@ class SecureMediaPagerAdapter(
             }
             
             Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
+            
+            // Add a timeout to detect if VideoView never calls onPrepared
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (holder.loadingIndicator.visibility == View.VISIBLE) {
+                    Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
+                    holder.loadingIndicator.visibility = View.GONE
+                }
+            }, 10000) // 10 second timeout
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
