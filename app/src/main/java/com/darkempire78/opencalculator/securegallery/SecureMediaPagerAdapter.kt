@@ -38,6 +38,11 @@ class SecureMediaPagerAdapter(
     private val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
     private val activityRef = WeakReference(context as? Activity)
     
+    // Preloading and memory management
+    private val preloadCache = mutableMapOf<Int, File>() // Cache prepared video files
+    private val maxPreloadItems = 3 // Limit preloaded items
+    private var lastPreloadPosition = -1
+    
     override fun getItemViewType(position: Int): Int {
         return when (mediaList[position].mediaType) {
             MediaType.PHOTO -> VIEW_TYPE_PHOTO
@@ -133,7 +138,79 @@ class SecureMediaPagerAdapter(
         val media = mediaList[position]
         when (holder) {
             is PhotoViewHolder -> bindPhoto(holder, media)
-            is VideoViewHolder -> bindVideo(holder, media)
+            is VideoViewHolder -> {
+                bindVideo(holder, media)
+                // Trigger intelligent preloading for smooth video experience
+                intelligentPreload(position)
+            }
+        }
+    }
+    
+    // Intelligent preloading for videos to reduce loading delays
+    private fun intelligentPreload(currentPosition: Int) {
+        if (currentPosition == lastPreloadPosition) return
+        lastPreloadPosition = currentPosition
+        
+        Thread {
+            try {
+                // Preload next and previous videos
+                val positionsToPreload = listOf(currentPosition - 1, currentPosition + 1)
+                    .filter { it >= 0 && it < mediaList.size }
+                    .filter { mediaList[it].mediaType == MediaType.VIDEO }
+                
+                for (pos in positionsToPreload) {
+                    if (!preloadCache.containsKey(pos) && preloadCache.size < maxPreloadItems) {
+                        val videoMedia = mediaList[pos]
+                        preloadVideoFile(videoMedia, pos)
+                    }
+                }
+                
+                // Clean up distant preloaded items
+                val distantKeys = preloadCache.keys.filter { 
+                    kotlin.math.abs(it - currentPosition) > 2 
+                }.toList()
+                for (key in distantKeys) {
+                    preloadCache[key]?.delete()
+                    preloadCache.remove(key)
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error during intelligent preload", e)
+            }
+        }.start()
+    }
+    
+    private fun preloadVideoFile(videoMedia: SecureMedia, position: Int) {
+        if (key == null) return
+        
+        try {
+            val cacheDir = File(context.cacheDir, "temp_videos")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+            
+            val tempFile = File(cacheDir, "preload_${System.currentTimeMillis()}_${position}.mp4")
+            
+            if (videoMedia.usesExternalStorage()) {
+                // For large videos, stream decrypt to temp file
+                val encryptedFile = File(videoMedia.filePath!!)
+                val inputStream = FileInputStream(encryptedFile)
+                val outputStream = FileOutputStream(tempFile)
+                
+                CryptoUtils.decryptStream(inputStream, outputStream, key)
+                inputStream.close()
+                outputStream.close()
+            } else {
+                // For smaller videos, decrypt data to temp file
+                val encryptedData = videoMedia.getEncryptedData()
+                val iv = encryptedData.copyOfRange(0, 16)
+                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                
+                tempFile.writeBytes(decryptedBytes)
+            }
+            
+            preloadCache[position] = tempFile
+            Log.d("SecureMediaPagerAdapter", "Preloaded video file for position $position")
+        } catch (e: Exception) {
+            Log.w("SecureMediaPagerAdapter", "Failed to preload video for position $position", e)
         }
     }
     
@@ -199,6 +276,20 @@ class SecureMediaPagerAdapter(
             // Show loading indicator
             holder.loadingContainer.visibility = View.VISIBLE
             holder.videoView.visibility = View.GONE
+            
+            val currentPosition = mediaList.indexOf(media)
+            
+            // Check if video is already preloaded
+            val preloadedFile = preloadCache[currentPosition]
+            if (preloadedFile != null && preloadedFile.exists()) {
+                Log.d("SecureMediaPagerAdapter", "Using preloaded video file for: ${media.name}")
+                // Use preloaded file immediately
+                val activity = activityRef.get()
+                activity?.runOnUiThread {
+                    setupVideoView(holder, media.name, preloadedFile)
+                }
+                return
+            }
             
             // Decrypt and prepare video in background thread
             Thread {
@@ -552,6 +643,16 @@ class SecureMediaPagerAdapter(
             }
         }
         tempFiles.clear()
+        
+        // Clean up preload cache
+        for (file in preloadCache.values) {
+            try {
+                file.delete()
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Failed to delete preload file: ${file.name}", e)
+            }
+        }
+        preloadCache.clear()
     }
     
     class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {

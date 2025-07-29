@@ -45,6 +45,10 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val mediaType: MediaType
     )
 
+    // Memory cache for optimized thumbnail loading
+    private val thumbnailCache = mutableMapOf<String, MediaThumbnail?>()
+    private val maxCacheSize = 50 // Limit cache to 50 items to prevent memory issues
+
     private var deleteDialog: android.app.AlertDialog? = null
     private var isDeleteMode = false
     private val selectedPhotosForDeletion = mutableSetOf<Int>()
@@ -140,70 +144,54 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
+        // Show loading dialog for media import
+        val loadingDialog = android.app.ProgressDialog(this).apply {
+            setTitle("Importing Media")
+            setMessage("Encrypting and processing media files...")
+            setCancelable(false)
+            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+            max = uris.size
+            show()
+        }
+        
         val encryptedMedia = mutableListOf<SecureMedia>()
         val deletableUris = mutableListOf<android.net.Uri>()
         
-        for (uri in uris) {
-            try {
-                // Determine media type based on MIME type
-                val mimeType = contentResolver.getType(uri)
-                val mediaType = when {
-                    mimeType?.startsWith("image/") == true -> MediaType.PHOTO
-                    mimeType?.startsWith("video/") == true -> MediaType.VIDEO
-                    else -> MediaType.PHOTO // Default to photo if unknown
-                }
-                
-                if (key != null) {
-                    val inputStream = contentResolver.openInputStream(uri)
-                    if (inputStream != null) {
-                        val extension = when (mediaType) {
-                            MediaType.PHOTO -> ".jpg"
-                            MediaType.VIDEO -> ".mp4"
-                        }
-                        val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
-                        
-                        // Use different storage strategies based on media type and size
-                        if (mediaType == MediaType.VIDEO) {
-                            // For videos, always store in external files to avoid memory issues
-                            val galleryDir = java.io.File(filesDir, "secure_gallery")
-                            if (!galleryDir.exists()) galleryDir.mkdirs()
-                            
-                            val encryptedFile = java.io.File(galleryDir, "${java.util.UUID.randomUUID()}.enc")
-                            val fileOutputStream = java.io.FileOutputStream(encryptedFile)
-                            
-                            CryptoUtils.encryptStream(inputStream, fileOutputStream, key)
-                            inputStream.close()
-                            fileOutputStream.close()
-                            
-                            val secureMedia = SecureMedia.createWithFileStorage(
-                                name = name,
-                                date = System.currentTimeMillis(),
-                                mediaType = mediaType,
-                                encryptedFilePath = encryptedFile.absolutePath
-                            )
-                            
-                            encryptedMedia.add(secureMedia)
-                            
-                            // Generate and save thumbnail in background to avoid blocking UI
-                            Thread {
-                                try {
-                                    VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
-                                    Log.d("SecureGallery", "Background thumbnail generation completed for ${secureMedia.name}")
-                                } catch (e: Exception) {
-                                    Log.e("SecureGallery", "Failed to generate thumbnail in background for ${secureMedia.name}", e)
-                                }
-                            }.start()
-                        } else {
-                            // For photos, check file size first to avoid OutOfMemoryError
-                            val fileSize = try {
-                                val fileDescriptor = contentResolver.openFileDescriptor(uri, "r")
-                                fileDescriptor?.statSize ?: 0
-                            } catch (e: Exception) {
-                                0
+        // Process media in background to avoid blocking UI
+        Thread {
+            var processedCount = 0
+        // Process media in background to avoid blocking UI
+        Thread {
+            var processedCount = 0
+            
+            for (uri in uris) {
+                try {
+                    // Update loading dialog on UI thread
+                    runOnUiThread {
+                        loadingDialog.progress = processedCount
+                        loadingDialog.setMessage("Processing media ${processedCount + 1} of ${uris.size}...")
+                    }
+                    
+                    // Determine media type based on MIME type
+                    val mimeType = contentResolver.getType(uri)
+                    val mediaType = when {
+                        mimeType?.startsWith("image/") == true -> MediaType.PHOTO
+                        mimeType?.startsWith("video/") == true -> MediaType.VIDEO
+                        else -> MediaType.PHOTO // Default to photo if unknown
+                    }
+                    
+                    if (key != null) {
+                        val inputStream = contentResolver.openInputStream(uri)
+                        if (inputStream != null) {
+                            val extension = when (mediaType) {
+                                MediaType.PHOTO -> ".jpg"
+                                MediaType.VIDEO -> ".mp4"
                             }
+                            val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
                             
-                            // Use file storage for photos larger than 50MB
-                            if (fileSize > 50 * 1024 * 1024) {
+                            // Use different storage strategies based on media type and size
+                            if (mediaType == MediaType.VIDEO) {
+                                // For videos, always store in external files to avoid memory issues
                                 val galleryDir = java.io.File(filesDir, "secure_gallery")
                                 if (!galleryDir.exists()) galleryDir.mkdirs()
                                 
@@ -214,41 +202,178 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 inputStream.close()
                                 fileOutputStream.close()
                                 
-                                encryptedMedia.add(SecureMedia.createWithFileStorage(
+                                val secureMedia = SecureMedia.createWithFileStorage(
                                     name = name,
                                     date = System.currentTimeMillis(),
                                     mediaType = mediaType,
                                     encryptedFilePath = encryptedFile.absolutePath
-                                ))
+                                )
+                                
+                                encryptedMedia.add(secureMedia)
+                                
+                                // Generate and save thumbnail in background to avoid blocking UI
+                                try {
+                                    VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
+                                    Log.d("SecureGallery", "Background thumbnail generation completed for ${secureMedia.name}")
+                                } catch (e: Exception) {
+                                    Log.e("SecureGallery", "Failed to generate thumbnail in background for ${secureMedia.name}", e)
+                                }
                             } else {
-                                // For smaller photos, keep in-memory storage
-                                val bytes = inputStream.readBytes()
-                                inputStream.close()
+                                // For photos, check file size first to avoid OutOfMemoryError
+                                val fileSize = try {
+                                    val fileDescriptor = contentResolver.openFileDescriptor(uri, "r")
+                                    fileDescriptor?.statSize ?: 0
+                                } catch (e: Exception) {
+                                    0
+                                }
                                 
-                                val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
-                                val combined = iv + encrypted
-                                
-                                encryptedMedia.add(SecureMedia(
-                                    _encryptedData = combined,
-                                    name = name,
-                                    date = System.currentTimeMillis(),
-                                    mediaType = mediaType
-                                ))
+                                // Use file storage for photos larger than 50MB
+                                if (fileSize > 50 * 1024 * 1024) {
+                                    val galleryDir = java.io.File(filesDir, "secure_gallery")
+                                    if (!galleryDir.exists()) galleryDir.mkdirs()
+                                    
+                                    val encryptedFile = java.io.File(galleryDir, "${java.util.UUID.randomUUID()}.enc")
+                                    val fileOutputStream = java.io.FileOutputStream(encryptedFile)
+                                    
+                                    CryptoUtils.encryptStream(inputStream, fileOutputStream, key)
+                                    inputStream.close()
+                                    fileOutputStream.close()
+                                    
+                                    encryptedMedia.add(SecureMedia.createWithFileStorage(
+                                        name = name,
+                                        date = System.currentTimeMillis(),
+                                        mediaType = mediaType,
+                                        encryptedFilePath = encryptedFile.absolutePath
+                                    ))
+                                } else {
+                                    // For smaller photos, keep in-memory storage
+                                    val bytes = inputStream.readBytes()
+                                    inputStream.close()
+                                    
+                                    val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
+                                    val combined = iv + encrypted
+                                    
+                                    encryptedMedia.add(SecureMedia(
+                                        _encryptedData = combined,
+                                        name = name,
+                                        date = System.currentTimeMillis(),
+                                        mediaType = mediaType
+                                    ))
+                                }
+                            }
+                            
+                            // Only add URIs that can actually be deleted (not photo picker temporary URIs)
+                            val scheme = uri.scheme
+                            val authority = uri.authority
+                            if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
+                                deletableUris.add(uri)
                             }
                         }
-                        
-                        // Only add URIs that can actually be deleted (not photo picker temporary URIs)
-                        val scheme = uri.scheme
-                        val authority = uri.authority
-                        if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
-                            deletableUris.add(uri)
+                    }
+                    processedCount++
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to encrypt media: $uri", e)
+                    processedCount++
+                }
+            }
+            
+            // Continue processing on UI thread
+            runOnUiThread {
+                loadingDialog.dismiss()
+                finishMediaImport(encryptedMedia, deletableUris, originalUris, gallery, key)
+            }
+        }.start()
+    }
+    
+    // Optimized thumbnail loading with caching
+    private fun loadThumbnailOptimized(mediaItem: SecureMedia, key: javax.crypto.SecretKey?, position: Int): MediaThumbnail? {
+        val cacheKey = "${mediaItem.id}_${mediaItem.mediaType}"
+        
+        // Check cache first
+        thumbnailCache[cacheKey]?.let { cachedThumbnail ->
+            Log.d("SecureGallery", "Using cached thumbnail for position $position")
+            return cachedThumbnail
+        }
+        
+        // Generate thumbnail if not in cache
+        val thumbnail = when (mediaItem.mediaType) {
+            MediaType.PHOTO -> {
+                try {
+                    val encryptedData = mediaItem.getEncryptedData()
+                    if (encryptedData.size < 16) {
+                        Log.e("SecureGallery", "Encrypted data too small for photo: ${mediaItem.name}")
+                        return null
+                    }
+                    val iv = encryptedData.copyOfRange(0, 16)
+                    val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                    
+                    // Create a scaled down version for the thumbnail to save memory
+                    val options = android.graphics.BitmapFactory.Options().apply {
+                        inSampleSize = 4 // Scale down by factor of 4 for gallery thumbnails
+                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 // Use less memory
+                    }
+                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+                    MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to create optimized thumbnail for photo: ${mediaItem.name}", e)
+                    null
+                }
+            }
+            MediaType.VIDEO -> {
+                try {
+                    // Use cached thumbnail if available, otherwise generate using streaming
+                    val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
+                    val thumbnail = if (cachedThumbnail != null) {
+                        cachedThumbnail
+                    } else {
+                        // For videos, use streaming approach to avoid memory issues
+                        if (mediaItem.usesExternalStorage()) {
+                            VideoUtils.generateVideoThumbnailFromFile(mediaItem.filePath!!, key!!)
+                        } else {
+                            VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
                         }
                     }
+                    val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
+                    MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to create optimized thumbnail for video: ${mediaItem.name}", e)
+                    null
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("SecureGallery", "Failed to encrypt media: $uri", e)
             }
         }
+        
+        // Cache the result (limit cache size)
+        if (thumbnailCache.size >= maxCacheSize) {
+            // Remove oldest entries
+            val oldestKey = thumbnailCache.keys.first()
+            thumbnailCache[oldestKey]?.bitmap?.recycle()
+            thumbnailCache.remove(oldestKey)
+        }
+        thumbnailCache[cacheKey] = thumbnail
+        
+        return thumbnail
+    }
+    
+    // Preload thumbnails for smooth scrolling
+    private fun preloadThumbnails(centerPosition: Int, gallery: Gallery, key: javax.crypto.SecretKey?) {
+        if (key == null) return
+        
+        Thread {
+            val preloadRange = 3 // Preload 3 items before and after current position
+            val startIndex = maxOf(0, centerPosition - preloadRange)
+            val endIndex = minOf(gallery.media.size - 1, centerPosition + preloadRange)
+            
+            for (i in startIndex..endIndex) {
+                if (i != centerPosition && i < gallery.media.size) {
+                    val mediaItem = gallery.media[i]
+                    loadThumbnailOptimized(mediaItem, key, i)
+                }
+            }
+        }.start()
+    }
+    
+    private fun finishMediaImport(encryptedMedia: List<SecureMedia>, deletableUris: List<android.net.Uri>, originalUris: List<android.net.Uri>, gallery: Gallery, key: javax.crypto.SecretKey?) {
         
         // Add encrypted media to gallery
         gallery.media.addAll(encryptedMedia)
@@ -306,7 +431,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         if (deletableUris.isNotEmpty()) {
             deleteDialog = android.app.AlertDialog.Builder(this)
                 .setTitle("Delete Original Files?")
-                .setMessage("Do you want to delete the original files from your device? (${deletableUris.size} of ${uris.size} files can be deleted)")
+                .setMessage("Do you want to delete the original files from your device? (${deletableUris.size} of ${originalUris.size} files can be deleted)")
                 .setPositiveButton("Delete") { _, _ ->
                     var deletedCount = 0
                     var failedCount = 0
@@ -334,7 +459,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             deleteDialog?.show()
         } else {
             // No deletable files - show info message if files came from photo picker
-            val hasPickerUris = uris.any { uri -> 
+            val hasPickerUris = originalUris.any { uri -> 
                 uri.authority == "com.android.providers.media.photopicker" || uri.toString().contains("picker_get_content")
             }
             if (hasPickerUris) {
@@ -484,6 +609,27 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         android.util.Log.d("SecureGallery", "GalleryActivity onDestroy() called")
         deleteDialog?.dismiss()
         deleteDialog = null
+        
+        // Clean up memory cache
+        thumbnailCache.values.forEach { thumbnail ->
+            thumbnail?.bitmap?.let { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+        }
+        thumbnailCache.clear()
+        
+        // Clean up decrypted media bitmaps
+        decryptedMedia.forEach { thumbnail ->
+            thumbnail?.bitmap?.let { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+        }
+        decryptedMedia.clear()
+        
         cleanupSecurity()
         // Clear PIN from memory when gallery is destroyed
         TempPinHolder.clear()
@@ -523,6 +669,42 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Reset security trigger when activity becomes visible again after being paused
         // This ensures security works again after each legitimate return to gallery
         android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
+        
+        // Refresh gallery data to show any new media that was added
+        refreshGalleryData()
+    }
+    
+    private fun refreshGalleryData() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        
+        // Check if media count has changed
+        if (gallery.media.size != decryptedMedia.size || gallery.media.size > decryptedMedia.count { it != null }) {
+            android.util.Log.d("SecureGallery", "Media count changed, refreshing gallery: ${gallery.media.size} media, ${decryptedMedia.size} thumbnails")
+            
+            // Clear existing cache for refresh
+            thumbnailCache.clear()
+            
+            // Reload media thumbnails
+            val newDecryptedMediaList = gallery.media.mapIndexedNotNull { index, mediaItem ->
+                if (key != null) {
+                    loadThumbnailOptimized(mediaItem, key, index)
+                } else {
+                    null
+                }
+            }
+            
+            // Update the list and notify adapter
+            decryptedMedia.clear()
+            decryptedMedia.addAll(newDecryptedMediaList)
+            photosAdapter?.notifyDataSetChanged()
+            
+            android.util.Log.d("SecureGallery", "Gallery refresh completed: ${decryptedMedia.size} thumbnails loaded")
+        }
+    }
         TempPinHolder.clearSecurityTrigger()
     }
     
@@ -724,51 +906,10 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
         photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
         
-        // Decrypt and display media as thumbnails
-        val decryptedMediaList = media.mapNotNull { mediaItem ->
+        // Decrypt and display media as thumbnails using optimized loading
+        val decryptedMediaList = media.mapIndexedNotNull { index, mediaItem ->
             if (key != null) {
-                when (mediaItem.mediaType) {
-                    MediaType.PHOTO -> {
-                        // Try main decryption for photos
-                        try {
-                            val encryptedData = mediaItem.getEncryptedData()
-                            val iv = encryptedData.copyOfRange(0, 16)
-                            val ct = encryptedData.copyOfRange(16, encryptedData.size)
-                            val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
-                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                            MediaThumbnail(bitmap, null, mediaItem.mediaType)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SecureGallery", "Primary decryption failed for photo: ${mediaItem.name}", e)
-                            
-                            // Try legacy decryption with default salt
-                            try {
-                                val legacySalt = ByteArray(16) // Empty salt for legacy photos
-                                val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                                val encryptedData = mediaItem.getEncryptedData()
-                                val iv = encryptedData.copyOfRange(0, 16)
-                                val ct = encryptedData.copyOfRange(16, encryptedData.size)
-                                val decryptedBytes = CryptoUtils.decrypt(iv, ct, legacyKey)
-                                android.util.Log.d("SecureGallery", "Legacy decryption succeeded for photo: ${mediaItem.name}")
-                                val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                                MediaThumbnail(bitmap, null, mediaItem.mediaType)
-                            } catch (legacyE: Exception) {
-                                android.util.Log.e("SecureGallery", "Both primary and legacy decryption failed for photo: ${mediaItem.name}", legacyE)
-                                null
-                            }
-                        }
-                    }
-                    MediaType.VIDEO -> {
-                        // Generate video thumbnail using cached version
-                        try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(this@GalleryActivity, mediaItem, key)
-                            val duration = VideoUtils.getVideoDuration(mediaItem, key)
-                            MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
-                        } catch (e: Exception) {
-                            android.util.Log.e("SecureGallery", "Failed to generate video thumbnail: ${mediaItem.name}", e)
-                            null
-                        }
-                    }
-                }
+                loadThumbnailOptimized(mediaItem, key, index)
             } else {
                 null
             }
@@ -794,6 +935,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 }
                 
                 holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                
+                // Trigger preloading for smooth scrolling
+                if (!isOrganizeMode && !isDeleteMode) {
+                    preloadThumbnails(position, gallery, key)
+                }
                 
                 if (isOrganizeMode) {
                     // In organize mode, disable clicks (only allow drag)
@@ -1061,12 +1207,23 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     class MediaThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
+        private var currentBitmap: android.graphics.Bitmap? = null
+        
         fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.mediaThumbnail)
             val playIcon = itemView.findViewById<android.widget.ImageView>(R.id.playIcon)
             val durationText = itemView.findViewById<android.widget.TextView>(R.id.videoDuration)
             
+            // Recycle previous bitmap to free memory
+            currentBitmap?.let { oldBitmap ->
+                if (!oldBitmap.isRecycled) {
+                    oldBitmap.recycle()
+                }
+            }
+            currentBitmap = null
+            
             if (mediaThumbnail?.bitmap != null) {
+                currentBitmap = mediaThumbnail.bitmap
                 imageView.setImageBitmap(mediaThumbnail.bitmap)
             } else {
                 imageView.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -1105,6 +1262,15 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 itemView.alpha = 1.0f
                 itemView.setBackgroundColor(0x00000000.toInt()) // Transparent
             }
+        }
+        
+        fun cleanup() {
+            currentBitmap?.let { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+            currentBitmap = null
         }
     }
     
