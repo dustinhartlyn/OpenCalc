@@ -163,6 +163,13 @@ object ThumbnailGenerator {
     }
     
     /**
+     * Gets the thumbnail path for a media item
+     */
+    fun getThumbnailPath(context: Context, galleryName: String, mediaId: String): String {
+        return getThumbnailFile(context, galleryName, mediaId).absolutePath
+    }
+    
+    /**
      * Gets the file path for storing a thumbnail
      */
     private fun getThumbnailFile(context: Context, galleryName: String, mediaId: String): File {

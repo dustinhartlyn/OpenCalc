@@ -311,7 +311,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             if (mediaItem.hasThumbnail()) {
                 // Load the pre-generated encrypted thumbnail
                 val galleryName = intent.getStringExtra("gallery_name") ?: ""
-                val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(galleryName, mediaItem.id, key!!)
+                val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                 val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                     VideoUtils.getVideoDuration(mediaItem, key)
                 } else null
@@ -552,7 +553,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
                         
                         // Generate encrypted thumbnail for photo
-                        ThumbnailGenerator.generatePhotoThumbnail(this, decryptedBytes, mediaItem.id, galleryName, key)
+                        ThumbnailGenerator.generatePhotoThumbnail(this, decryptedBytes, mediaItem.id.toString(), galleryName, key)
                         android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
                     }
                     MediaType.VIDEO -> {
@@ -563,7 +564,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
                         
                         // Generate encrypted thumbnail for video
-                        ThumbnailGenerator.generateVideoThumbnail(this, decryptedBytes, mediaItem.id, galleryName, key)
+                        ThumbnailGenerator.generateVideoThumbnail(this, decryptedBytes, mediaItem.id.toString(), galleryName, key)
                         android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
                     }
                 }
@@ -576,7 +577,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val newMediaThumbnails = encryptedMedia.mapNotNull { mediaItem ->
             try {
                 if (mediaItem.hasThumbnail()) {
-                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(galleryName, mediaItem.id, key!!)
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                     val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                         VideoUtils.getVideoDuration(mediaItem, key!!)
                     } else null
