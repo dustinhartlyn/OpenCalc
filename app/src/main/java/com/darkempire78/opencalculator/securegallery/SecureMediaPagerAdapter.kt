@@ -134,7 +134,7 @@ class SecureMediaPagerAdapter(
                     Log.d("SecureMediaPagerAdapter", "Starting video decryption in background for: ${media.name}")
                     
                     // Create temporary file for video playback
-                    val tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
+                    var tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
                     tempFiles.add(tempFile)
                     
                     if (media.usesExternalStorage()) {
