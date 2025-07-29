@@ -159,9 +159,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         }
                         val name = "${mediaType.name.lowercase()}_${System.currentTimeMillis()}$extension"
                         
-                        // Use different storage strategies based on media type
+                        // Use different storage strategies based on media type and size
                         if (mediaType == MediaType.VIDEO) {
-                            // For videos, store in external files to avoid memory issues
+                            // For videos, always store in external files to avoid memory issues
                             val galleryDir = java.io.File(filesDir, "secure_gallery")
                             if (!galleryDir.exists()) galleryDir.mkdirs()
                             
@@ -179,19 +179,47 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 encryptedFilePath = encryptedFile.absolutePath
                             ))
                         } else {
-                            // For photos, keep in-memory storage
-                            val bytes = inputStream.readBytes()
-                            inputStream.close()
+                            // For photos, check file size first to avoid OutOfMemoryError
+                            val fileSize = try {
+                                val fileDescriptor = contentResolver.openFileDescriptor(uri, "r")
+                                fileDescriptor?.statSize ?: 0
+                            } catch (e: Exception) {
+                                0
+                            }
                             
-                            val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
-                            val combined = iv + encrypted
-                            
-                            encryptedMedia.add(SecureMedia(
-                                _encryptedData = combined,
-                                name = name,
-                                date = System.currentTimeMillis(),
-                                mediaType = mediaType
-                            ))
+                            // Use file storage for photos larger than 50MB
+                            if (fileSize > 50 * 1024 * 1024) {
+                                val galleryDir = java.io.File(filesDir, "secure_gallery")
+                                if (!galleryDir.exists()) galleryDir.mkdirs()
+                                
+                                val encryptedFile = java.io.File(galleryDir, "${java.util.UUID.randomUUID()}.enc")
+                                val fileOutputStream = java.io.FileOutputStream(encryptedFile)
+                                
+                                CryptoUtils.encryptStream(inputStream, fileOutputStream, key)
+                                inputStream.close()
+                                fileOutputStream.close()
+                                
+                                encryptedMedia.add(SecureMedia.createWithFileStorage(
+                                    name = name,
+                                    date = System.currentTimeMillis(),
+                                    mediaType = mediaType,
+                                    encryptedFilePath = encryptedFile.absolutePath
+                                ))
+                            } else {
+                                // For smaller photos, keep in-memory storage
+                                val bytes = inputStream.readBytes()
+                                inputStream.close()
+                                
+                                val (iv, encrypted) = CryptoUtils.encrypt(bytes, key)
+                                val combined = iv + encrypted
+                                
+                                encryptedMedia.add(SecureMedia(
+                                    _encryptedData = combined,
+                                    name = name,
+                                    date = System.currentTimeMillis(),
+                                    mediaType = mediaType
+                                ))
+                            }
                         }
                         
                         // Only add URIs that can actually be deleted (not photo picker temporary URIs)
@@ -212,6 +240,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Save gallery data (this will persist the added media)
         GalleryManager.setContext(this)
         GalleryManager.saveGalleries()
+        
+        // Refresh the UI to show new media immediately
+        photosAdapter?.notifyDataSetChanged()
         
         // Only prompt to delete originals if we have deletable URIs
         if (deletableUris.isNotEmpty()) {

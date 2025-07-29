@@ -53,19 +53,14 @@ object CryptoUtils {
         val buffer = ByteArray(8192) // 8KB buffer
         var bytesRead: Int
         while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-            val encrypted = if (bytesRead < buffer.size) {
-                // Last chunk - finalize
-                cipher.doFinal(buffer, 0, bytesRead)
-            } else {
-                // Normal chunk - update
-                cipher.update(buffer, 0, bytesRead)
-            }
+            // Use update for all chunks, including the last one
+            val encrypted = cipher.update(buffer, 0, bytesRead)
             if (encrypted != null) {
                 outputStream.write(encrypted)
             }
         }
         
-        // Finalize if we haven't already
+        // Finalize only once at the end
         val finalData = cipher.doFinal()
         if (finalData.isNotEmpty()) {
             outputStream.write(finalData)
