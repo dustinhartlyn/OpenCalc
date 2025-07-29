@@ -314,13 +314,9 @@ class SecureMediaPagerAdapter(
                     try {
                         decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
                     } catch (e: Exception) {
-                        Log.w("SecureMediaPagerAdapter", "Normal decryption failed for ${media.name}, trying legacy", e)
-                        // Try legacy decryption with default salt
-                        try {
-                            decryptedBytes = CryptoUtils.legacyDecrypt(encryptedData, key)
-                        } catch (legacyE: Exception) {
-                            Log.e("SecureMediaPagerAdapter", "Legacy decryption also failed for ${media.name}", legacyE)
-                        }
+                        Log.e("SecureMediaPagerAdapter", "Decryption failed for ${media.name}", e)
+                        setErrorImage(holder)
+                        return@Thread
                     }
                     
                     if (decryptedBytes == null) {
@@ -408,67 +404,6 @@ class SecureMediaPagerAdapter(
             }
         }
         return inSampleSize
-    }
-    
-    private fun tryLoadSmallerImage(holder: PhotoViewHolder, media: SecureMedia) {
-        Thread {
-            try {
-                val encryptedData = media.getEncryptedData()
-                val iv = encryptedData.copyOfRange(0, 16)
-                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key!!)
-                
-                // Use more aggressive sampling for memory-constrained situations
-                val options = BitmapFactory.Options().apply {
-                    inSampleSize = 4 // Quarter resolution
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                }
-                
-                val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
-                
-                activityRef.get()?.runOnUiThread {
-                    if (bitmap != null && !bitmap.isRecycled) {
-                        Log.d("SecureMediaPagerAdapter", "Loaded smaller bitmap for photo: ${media.name}")
-                        holder.setImageBitmap(bitmap)
-                    } else {
-                        setErrorImage(holder)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SecureMediaPagerAdapter", "Failed to load smaller image for: ${media.name}", e)
-                activityRef.get()?.runOnUiThread { setErrorImage(holder) }
-            }
-        }.start()
-    }
-    
-    private fun tryLegacyDecryption(holder: PhotoViewHolder, media: SecureMedia) {
-        Thread {
-            try {
-                val legacySalt = ByteArray(16)
-                val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                val encryptedData = media.getEncryptedData()
-                val iv = encryptedData.copyOfRange(0, 16)
-                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
-                
-                val options = BitmapFactory.Options().apply {
-                    inPreferredConfig = Bitmap.Config.RGB_565
-                }
-                val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
-                
-                activityRef.get()?.runOnUiThread {
-                    if (bitmap != null && !bitmap.isRecycled) {
-                        Log.d("SecureMediaPagerAdapter", "Legacy decryption succeeded for photo: ${media.name}")
-                        holder.setImageBitmap(bitmap)
-                    } else {
-                        setErrorImage(holder)
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e("SecureMediaPagerAdapter", "Both primary and legacy decryption failed for photo: ${media.name}", e)
-                activityRef.get()?.runOnUiThread { setErrorImage(holder) }
-            }
-        }.start()
     }
     
     private fun setErrorImage(holder: PhotoViewHolder) {
