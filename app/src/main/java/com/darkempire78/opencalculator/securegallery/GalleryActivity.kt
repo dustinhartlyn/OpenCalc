@@ -448,6 +448,21 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             }
             
             android.util.Log.d("SecureGallery", "Completed loading all thumbnails")
+            
+            // Final notification to ensure UI is updated
+            runOnUiThread {
+                val loadedCount = decryptedMedia.count { it != null }
+                android.util.Log.d("SecureGallery", "Final UI update: decryptedMedia.size = ${decryptedMedia.size}, loaded count = $loadedCount")
+                
+                // Force a complete refresh of the adapter
+                photosAdapter?.notifyDataSetChanged()
+                
+                // Also force the RecyclerView to re-layout
+                val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
+                photosRecyclerView.requestLayout()
+                
+                android.util.Log.d("SecureGallery", "Forced RecyclerView layout refresh")
+            }
         }
     }
 
@@ -1201,17 +1216,17 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Initialize empty media list - thumbnails will be loaded asynchronously
         this.decryptedMedia = mutableListOf()
         
-        // Load only first few thumbnails initially to prevent ANR, load rest later
-        if (key != null && media.isNotEmpty()) {
-            loadInitialThumbnails(media, key)
-        }
-
+        // Create and initialize the adapter FIRST, then load thumbnails
         photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
                 val v = LayoutInflater.from(parent.context).inflate(R.layout.item_media_thumbnail, parent, false)
                 return MediaThumbnailViewHolder(v)
             }
-            override fun getItemCount() = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
+            override fun getItemCount(): Int {
+                val count = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
+                android.util.Log.d("SecureGallery", "getItemCount() returning: $count (organize: $isOrganizeMode, decryptedMedia: ${decryptedMedia.size})")
+                return count
+            }
             override fun onBindViewHolder(holder: MediaThumbnailViewHolder, position: Int) {
                 // Use organize media if in organize mode, otherwise use decrypted media
                 val mediaThumbnail = if (isOrganizeMode && position < organizeMedia.size) {
@@ -1221,6 +1236,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 } else {
                     null
                 }
+                
+                android.util.Log.d("SecureGallery", "onBindViewHolder position $position: mediaThumbnail = ${if (mediaThumbnail != null) "loaded" else "null"}")
                 
                 holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
                 
@@ -1289,6 +1306,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         
         photosRecyclerView.adapter = photosAdapter
+
+        // NOW load thumbnails after adapter is properly set up
+        if (key != null && media.isNotEmpty()) {
+            android.util.Log.d("SecureGallery", "Starting thumbnail loading for ${media.size} media items")
+            loadInitialThumbnails(media, key)
+        } else {
+            android.util.Log.w("SecureGallery", "No media to load: key=${key != null}, media.size=${media.size}")
+        }
 
         // Add drag-and-drop support for organize mode
         setupDragAndDrop(photosRecyclerView)
