@@ -374,32 +374,52 @@ class SecureMediaPagerAdapter(
                         holder.videoView.visibility = View.GONE
                         holder.surfaceView.visibility = View.VISIBLE
                         
-                        // Create and setup MediaPlayer
-                        holder.mediaPlayer = MediaPlayer().apply {
-                            setDataSource(tempFile.absolutePath)
-                            setDisplay(holder.surfaceView.holder)
-                            isLooping = true
-                            
-                            setOnPreparedListener { mp ->
-                                Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
-                                holder.loadingIndicator.visibility = View.GONE
-                                mp.start()
+                        // Wait for SurfaceView to be ready
+                        holder.surfaceView.holder.addCallback(object : android.view.SurfaceHolder.Callback {
+                            override fun surfaceCreated(surfaceHolder: android.view.SurfaceHolder) {
+                                Log.d("SecureMediaPagerAdapter", "Surface created, setting up MediaPlayer for $videoName")
+                                
+                                try {
+                                    // Create and setup MediaPlayer
+                                    holder.mediaPlayer = MediaPlayer().apply {
+                                        setDataSource(tempFile.absolutePath)
+                                        setDisplay(surfaceHolder)
+                                        isLooping = true
+                                        
+                                        setOnPreparedListener { mp ->
+                                            Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
+                                            holder.loadingIndicator.visibility = View.GONE
+                                            mp.start()
+                                        }
+                                        
+                                        setOnErrorListener { mp, what, extra ->
+                                            Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
+                                            holder.loadingIndicator.visibility = View.GONE
+                                            mp.release()
+                                            holder.mediaPlayer = null
+                                            true
+                                        }
+                                        
+                                        setOnVideoSizeChangedListener { mp, width, height ->
+                                            Log.d("SecureMediaPagerAdapter", "Video size changed: ${width}x${height}")
+                                        }
+                                        
+                                        prepareAsync()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("SecureMediaPagerAdapter", "Failed to create MediaPlayer for $videoName", e)
+                                    holder.loadingIndicator.visibility = View.GONE
+                                }
                             }
                             
-                            setOnErrorListener { mp, what, extra ->
-                                Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
-                                holder.loadingIndicator.visibility = View.GONE
-                                mp.release()
-                                holder.mediaPlayer = null
-                                true
+                            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {
+                                Log.d("SecureMediaPagerAdapter", "Surface changed: ${width}x${height}")
                             }
                             
-                            setOnVideoSizeChangedListener { mp, width, height ->
-                                Log.d("SecureMediaPagerAdapter", "Video size changed: ${width}x${height}")
+                            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                                Log.d("SecureMediaPagerAdapter", "Surface destroyed for $videoName")
                             }
-                            
-                            prepareAsync()
-                        }
+                        })
                         
                     } catch (e: Exception) {
                         Log.e("SecureMediaPagerAdapter", "Failed MediaPlayer approach for $videoName", e)
