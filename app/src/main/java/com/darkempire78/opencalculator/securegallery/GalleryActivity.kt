@@ -292,6 +292,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Optimized thumbnail loading with caching
     private fun loadThumbnailOptimized(mediaItem: SecureMedia, key: javax.crypto.spec.SecretKeySpec?, position: Int): MediaThumbnail? {
+        // Debug check: warn if this is called on main thread
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            android.util.Log.w("SecureGallery", "WARNING: loadThumbnailOptimized called on main thread! This may cause ANR!")
+        }
+        
         val cacheKey = "${mediaItem.id}_${mediaItem.mediaType}"
         
         // Check cache first
@@ -300,8 +305,43 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             return cachedThumbnail
         }
         
-        // Generate thumbnail if not in cache
-        val thumbnail = when (mediaItem.mediaType) {
+        // Load pre-generated thumbnail instead of generating on-demand
+        val thumbnail = try {
+            if (mediaItem.hasThumbnail()) {
+                // Load the pre-generated encrypted thumbnail
+                val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(mediaItem, key!!)
+                val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
+                    VideoUtils.getVideoDuration(mediaItem, key)
+                } else null
+                MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
+            } else {
+                // Fallback: generate thumbnail if pre-generated one doesn't exist (for backwards compatibility)
+                android.util.Log.w("SecureGallery", "No pre-generated thumbnail found for ${mediaItem.name}, generating on-demand")
+                generateThumbnailFallback(mediaItem, key)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("SecureGallery", "Failed to load thumbnail for: ${mediaItem.name}", e)
+            // Fallback to on-demand generation if loading pre-generated thumbnail fails
+            generateThumbnailFallback(mediaItem, key)
+        }
+        
+        // Cache the result (limit cache size)
+        if (thumbnail != null) {
+            if (thumbnailCache.size >= maxCacheSize) {
+                // Remove oldest entries
+                val oldestKey = thumbnailCache.keys.first()
+                thumbnailCache[oldestKey]?.bitmap?.recycle()
+                thumbnailCache.remove(oldestKey)
+            }
+            thumbnailCache[cacheKey] = thumbnail
+        }
+        
+        return thumbnail
+    }
+    
+    // Fallback function for generating thumbnails on-demand (for backwards compatibility)
+    private fun generateThumbnailFallback(mediaItem: SecureMedia, key: javax.crypto.spec.SecretKeySpec?): MediaThumbnail? {
+        return when (mediaItem.mediaType) {
             MediaType.PHOTO -> {
                 try {
                     val encryptedData = mediaItem.getEncryptedData()
@@ -328,7 +368,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     
                     MediaThumbnail(bitmap, null, mediaItem.mediaType)
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to create optimized thumbnail for photo: ${mediaItem.name}", e)
+                    android.util.Log.e("SecureGallery", "Failed to create fallback thumbnail for photo: ${mediaItem.name}", e)
                     null
                 }
             }
@@ -349,22 +389,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
                     MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to create optimized thumbnail for video: ${mediaItem.name}", e)
+                    android.util.Log.e("SecureGallery", "Failed to create fallback thumbnail for video: ${mediaItem.name}", e)
                     null
                 }
             }
         }
-        
-        // Cache the result (limit cache size)
-        if (thumbnailCache.size >= maxCacheSize) {
-            // Remove oldest entries
-            val oldestKey = thumbnailCache.keys.first()
-            thumbnailCache[oldestKey]?.bitmap?.recycle()
-            thumbnailCache.remove(oldestKey)
-        }
-        thumbnailCache[cacheKey] = thumbnail
-        
-        return thumbnail
     }
     
     // Check if we should pause thumbnail loading due to user interaction
@@ -508,43 +537,42 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         GalleryManager.setContext(this)
         GalleryManager.saveGalleries()
         
-        // Create thumbnails for the new media and add to decryptedMedia list
+        // Generate and save encrypted thumbnails for the new media during import
+        encryptedMedia.forEach { mediaItem ->
+            try {
+                when (mediaItem.mediaType) {
+                    MediaType.PHOTO -> {
+                        // Generate encrypted thumbnail for photo
+                        ThumbnailGenerator.generatePhotoThumbnail(mediaItem, key!!)
+                        android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
+                    }
+                    MediaType.VIDEO -> {
+                        // Generate encrypted thumbnail for video
+                        ThumbnailGenerator.generateVideoThumbnail(mediaItem, key!!)
+                        android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("SecureGallery", "Failed to generate thumbnail during import for: ${mediaItem.name}", e)
+            }
+        }
+        
+        // Load the pre-generated thumbnails for immediate display
         val newMediaThumbnails = encryptedMedia.mapNotNull { mediaItem ->
-            when (mediaItem.mediaType) {
-                MediaType.PHOTO -> {
-                    try {
-                        val encryptedData = mediaItem.getEncryptedData()
-                        val iv = encryptedData.copyOfRange(0, 16)
-                        val ct = encryptedData.copyOfRange(16, encryptedData.size)
-                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
-                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
-                        MediaThumbnail(bitmap, null, mediaItem.mediaType)
-                    } catch (e: Exception) {
-                        android.util.Log.e("SecureGallery", "Failed to create thumbnail for new photo: ${mediaItem.name}", e)
-                        null
-                    }
+            try {
+                if (mediaItem.hasThumbnail()) {
+                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(mediaItem, key!!)
+                    val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
+                        VideoUtils.getVideoDuration(mediaItem, key!!)
+                    } else null
+                    MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
+                } else {
+                    android.util.Log.w("SecureGallery", "No thumbnail available for: ${mediaItem.name}")
+                    null
                 }
-                MediaType.VIDEO -> {
-                    try {
-                        // Use cached thumbnail if available, otherwise generate using streaming
-                        val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
-                        val thumbnail = if (cachedThumbnail != null) {
-                            cachedThumbnail
-                        } else {
-                            // For videos, use streaming approach to avoid memory issues
-                            if (mediaItem.usesExternalStorage()) {
-                                VideoUtils.generateVideoThumbnailFromFile(mediaItem.filePath!!, key!!)
-                            } else {
-                                VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
-                            }
-                        }
-                        val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
-                        MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
-                    } catch (e: Exception) {
-                        android.util.Log.e("SecureGallery", "Failed to create thumbnail for new video: ${mediaItem.name}", e)
-                        null
-                    }
-                }
+            } catch (e: Exception) {
+                android.util.Log.e("SecureGallery", "Failed to load thumbnail for: ${mediaItem.name}", e)
+                null
             }
         }
         
@@ -822,24 +850,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         if (gallery.media.size != decryptedMedia.size || gallery.media.size > decryptedMedia.count { it != null }) {
             android.util.Log.d("SecureGallery", "Media count changed, refreshing gallery: ${gallery.media.size} media, ${decryptedMedia.size} thumbnails")
             
-            // Clear existing cache for refresh
-            thumbnailCache.clear()
-            
-            // Reload media thumbnails
-            val newDecryptedMediaList = gallery.media.mapIndexedNotNull { index, mediaItem ->
-                if (key != null) {
-                    loadThumbnailOptimized(mediaItem, key, index)
-                } else {
-                    null
-                }
-            }
-            
-            // Update the list and notify adapter
+            // Clear existing data for refresh
             decryptedMedia.clear()
-            decryptedMedia.addAll(newDecryptedMediaList)
             photosAdapter?.notifyDataSetChanged()
             
-            android.util.Log.d("SecureGallery", "Gallery refresh completed: ${decryptedMedia.size} thumbnails loaded")
+            // Load thumbnails asynchronously to prevent ANR - DO NOT load synchronously here!
+            if (key != null && gallery.media.isNotEmpty()) {
+                loadInitialThumbnails(gallery.media, key)
+            }
+            
+            android.util.Log.d("SecureGallery", "Gallery refresh started asynchronously")
         }
     }
     

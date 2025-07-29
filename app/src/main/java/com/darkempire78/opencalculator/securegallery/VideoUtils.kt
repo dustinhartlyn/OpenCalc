@@ -218,6 +218,51 @@ object VideoUtils {
             
             // Use streaming decryption to avoid loading entire file into memory
             val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+            
+            return generateVideoThumbnailFromDecryptedBytes(encryptedVideoData, key)
+        } catch (e: Exception) {
+            Log.e("VideoUtils", "Failed to generate thumbnail from encrypted data", e)
+            return null
+        } finally {
+            retriever?.release()
+            tempFile?.delete()
+        }
+    }
+    
+    /**
+     * Generate video thumbnail from unencrypted video bytes (for thumbnail generation during import)
+     */
+    fun generateVideoThumbnailFromBytes(videoBytes: ByteArray, key: javax.crypto.spec.SecretKeySpec? = null): android.graphics.Bitmap? {
+        var tempFile: File? = null
+        var retriever: MediaMetadataRetriever? = null
+        try {
+            Log.d("VideoUtils", "Generating thumbnail from unencrypted bytes, size: ${videoBytes.size}")
+            
+            // Create a temporary file to store the video
+            tempFile = File.createTempFile("temp_video_", ".mp4")
+            tempFile.deleteOnExit()
+            tempFile.writeBytes(videoBytes)
+            
+            // Use MediaMetadataRetriever to get thumbnail
+            retriever = MediaMetadataRetriever()
+            retriever.setDataSource(tempFile.absolutePath)
+            
+            val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            Log.d("VideoUtils", "Thumbnail generated successfully from bytes")
+            return bitmap
+        } catch (e: Exception) {
+            Log.e("VideoUtils", "Failed to generate thumbnail from bytes", e)
+            return null
+        } finally {
+            retriever?.release()
+            tempFile?.delete()
+        }
+    }
+    
+    private fun generateVideoThumbnailFromDecryptedBytes(encryptedVideoData: ByteArray, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
+        var tempFile: File? = null
+        var retriever: MediaMetadataRetriever? = null
+        try {
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
             val inputStream = ByteArrayInputStream(encryptedVideoData, 16, encryptedVideoData.size - 16)

@@ -16,7 +16,8 @@ class SecureMedia(
     val date: Long,
     val mediaType: MediaType,
     var customOrder: Int = -1, // For custom sorting, -1 means not set
-    val filePath: String? = null // For large files stored separately
+    val filePath: String? = null, // For large files stored separately
+    val thumbnailPath: String? = null // Path to pre-generated encrypted thumbnail
 ) : Serializable {
     
     // Convenience method to check if this is a photo
@@ -45,6 +46,20 @@ class SecureMedia(
         }
     }
     
+    // Get pre-generated encrypted thumbnail data
+    fun getEncryptedThumbnail(): ByteArray? {
+        return if (thumbnailPath != null && java.io.File(thumbnailPath).exists()) {
+            java.io.File(thumbnailPath).readBytes()
+        } else {
+            null
+        }
+    }
+    
+    // Check if this media has a pre-generated thumbnail
+    fun hasThumbnail(): Boolean {
+        return thumbnailPath != null && java.io.File(thumbnailPath).exists()
+    }
+    
     // Companion object for file management
     companion object {
         fun createWithFileStorage(
@@ -52,7 +67,8 @@ class SecureMedia(
             date: Long,
             mediaType: MediaType,
             encryptedFilePath: String,
-            customOrder: Int = -1
+            customOrder: Int = -1,
+            thumbnailPath: String? = null
         ): SecureMedia {
             return SecureMedia(
                 _encryptedData = ByteArray(0), // Empty array for file-based storage
@@ -60,7 +76,8 @@ class SecureMedia(
                 date = date,
                 mediaType = mediaType,
                 customOrder = customOrder,
-                filePath = encryptedFilePath
+                filePath = encryptedFilePath,
+                thumbnailPath = thumbnailPath
             )
         }
     }
