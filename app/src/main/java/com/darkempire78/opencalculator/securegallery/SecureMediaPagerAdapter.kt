@@ -12,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.VideoView
 import androidx.recyclerview.widget.RecyclerView
+import com.darkempire78.opencalculator.R
 import com.github.chrisbanes.photoview.PhotoView
 import java.io.File
 import java.io.FileOutputStream

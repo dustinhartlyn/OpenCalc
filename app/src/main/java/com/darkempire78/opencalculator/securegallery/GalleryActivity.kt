@@ -48,6 +48,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var isDeleteMode = false
     private val selectedPhotosForDeletion = mutableSetOf<Int>()
     private var photosAdapter: RecyclerView.Adapter<MediaThumbnailViewHolder>? = null
+    private var decryptedMedia = mutableListOf<MediaThumbnail?>()
     
     // Note management
     private var isNoteDeleteMode = false
@@ -616,7 +617,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
         
         // Decrypt and display media as thumbnails
-        val decryptedMedia = media.mapNotNull { mediaItem ->
+        val decryptedMediaList = media.mapNotNull { mediaItem ->
             if (key != null) {
                 when (mediaItem.mediaType) {
                     MediaType.PHOTO -> {
@@ -662,6 +663,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 null
             }
         }
+        
+        // Assign to class property
+        this.decryptedMedia = decryptedMediaList.toMutableList()
 
         photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
@@ -1216,13 +1220,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 val v = LayoutInflater.from(parent.context).inflate(R.layout.item_media_thumbnail, parent, false)
                 return MediaThumbnailViewHolder(v)
             }
-            override fun getItemCount() = if (isOrganizeMode) organizeMedia.size else mediaThumbnails.size
+            override fun getItemCount() = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
             override fun onBindViewHolder(holder: MediaThumbnailViewHolder, position: Int) {
                 // Use organize media if in organize mode, otherwise use media thumbnails
                 val mediaThumbnail = if (isOrganizeMode && position < organizeMedia.size) {
                     organizeMedia[position]
-                } else if (position < mediaThumbnails.size) {
-                    mediaThumbnails[position]
+                } else if (position < decryptedMedia.size) {
+                    decryptedMedia[position]
                 } else {
                     null
                 }
@@ -1296,13 +1300,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 val galleryName = intent.getStringExtra("gallery_name") ?: return false
                 val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return false
                 
-                if (fromPosition < gallery.photos.size && toPosition < gallery.photos.size) {
-                    val item = gallery.photos.removeAt(fromPosition)
-                    gallery.photos.add(toPosition, item)
+                if (fromPosition < gallery.media.size && toPosition < gallery.media.size) {
+                    val item = gallery.media.removeAt(fromPosition)
+                    gallery.media.add(toPosition, item)
                     
-                    // Also move the decrypted bitmap
-                    val bitmap = organizePhotos.removeAt(fromPosition)
-                    organizePhotos.add(toPosition, bitmap)
+                    // Also move the decrypted media thumbnail
+                    val mediaThumbnail = organizeMedia.removeAt(fromPosition)
+                    organizeMedia.add(toPosition, mediaThumbnail)
                     
                     // Notify adapter of the move
                     photosAdapter?.notifyItemMoved(fromPosition, toPosition)

@@ -11,7 +11,7 @@ object VideoUtils {
     /**
      * Generates a thumbnail bitmap from encrypted video data
      */
-    fun generateVideoThumbnail(encryptedVideoData: ByteArray, key: javax.crypto.SecretKey): Bitmap? {
+    fun generateVideoThumbnail(encryptedVideoData: ByteArray, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
         var tempFile: File? = null
         try {
             // Decrypt the video data
@@ -49,7 +49,7 @@ object VideoUtils {
     /**
      * Gets video duration from encrypted video data
      */
-    fun getVideoDuration(encryptedVideoData: ByteArray, key: javax.crypto.SecretKey): String {
+    fun getVideoDuration(encryptedVideoData: ByteArray, key: javax.crypto.spec.SecretKeySpec): String {
         var tempFile: File? = null
         try {
             // Decrypt the video data

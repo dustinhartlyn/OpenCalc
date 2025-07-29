@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.viewpager2.widget.ViewPager2
+import com.darkempire78.opencalculator.R
 import java.io.File
 import java.io.FileOutputStream
 
