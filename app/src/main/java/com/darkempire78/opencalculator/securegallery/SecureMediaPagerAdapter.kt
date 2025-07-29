@@ -182,6 +182,16 @@ class SecureMediaPagerAdapter(
                     
                     Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
                     
+                    // Force garbage collection to free up memory after decryption
+                    System.gc()
+                    
+                    // Log memory usage
+                    val runtime = Runtime.getRuntime()
+                    val totalMemory = runtime.totalMemory()
+                    val freeMemory = runtime.freeMemory()
+                    val usedMemory = totalMemory - freeMemory
+                    Log.d("SecureMediaPagerAdapter", "Memory after decryption - Used: ${usedMemory / 1024 / 1024}MB, Free: ${freeMemory / 1024 / 1024}MB, Total: ${totalMemory / 1024 / 1024}MB")
+                    
                     // Setup video view on main thread with safety checks
                     val activity = activityRef.get()
                     if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
@@ -189,7 +199,24 @@ class SecureMediaPagerAdapter(
                             try {
                                 // Double-check activity state in UI thread
                                 if (!activity.isFinishing && !activity.isDestroyed) {
-                                    setupVideoView(holder, tempFile, media.name)
+                                    Log.d("SecureMediaPagerAdapter", "About to setup video view for ${media.name}")
+                                    
+                                    // Add a small delay to ensure the activity is fully ready
+                                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                                        try {
+                                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                                setupVideoView(holder, tempFile, media.name)
+                                                Log.d("SecureMediaPagerAdapter", "Video view setup initiated for ${media.name}")
+                                            } else {
+                                                Log.w("SecureMediaPagerAdapter", "Activity destroyed during delay, skipping video setup for ${media.name}")
+                                                holder.loadingIndicator.visibility = View.GONE
+                                            }
+                                        } catch (e: Exception) {
+                                            Log.e("SecureMediaPagerAdapter", "Failed to setup video view (delayed) for ${media.name}", e)
+                                            holder.loadingIndicator.visibility = View.GONE
+                                        }
+                                    }, 100) // 100ms delay
+                                    
                                 } else {
                                     Log.w("SecureMediaPagerAdapter", "Activity finishing/destroyed, skipping video setup for ${media.name}")
                                     holder.loadingIndicator.visibility = View.GONE
@@ -220,33 +247,51 @@ class SecureMediaPagerAdapter(
     }
     
     private fun setupVideoView(holder: VideoViewHolder, tempFile: File, videoName: String) {
-        val uri = Uri.fromFile(tempFile)
-        holder.videoView.setVideoURI(uri)
-        
-        // Set up video listeners
-        holder.videoView.setOnPreparedListener { mediaPlayer ->
-            Log.d("SecureMediaPagerAdapter", "Video prepared: $videoName")
+        try {
+            Log.d("SecureMediaPagerAdapter", "Setting up video view for: $videoName, file exists: ${tempFile.exists()}, file size: ${tempFile.length()}")
             
-            // Hide loading indicator and show video
+            val uri = Uri.fromFile(tempFile)
+            Log.d("SecureMediaPagerAdapter", "Created URI: $uri")
+            
+            holder.videoView.setVideoURI(uri)
+            Log.d("SecureMediaPagerAdapter", "Video URI set successfully")
+            
+            // Set up video listeners
+            holder.videoView.setOnPreparedListener { mediaPlayer ->
+                Log.d("SecureMediaPagerAdapter", "Video prepared: $videoName")
+                
+                try {
+                    // Hide loading indicator and show video
+                    holder.loadingIndicator.visibility = View.GONE
+                    holder.videoView.visibility = View.VISIBLE
+                    
+                    // Set video to loop
+                    mediaPlayer.isLooping = true
+                    
+                    // Start playing automatically
+                    holder.videoView.start()
+                    Log.d("SecureMediaPagerAdapter", "Video started playing: $videoName")
+                } catch (e: Exception) {
+                    Log.e("SecureMediaPagerAdapter", "Error in onPrepared for $videoName", e)
+                }
+            }
+            
+            holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
+                Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
+                holder.loadingIndicator.visibility = View.GONE
+                true
+            }
+            
+            holder.videoView.setOnCompletionListener { mediaPlayer ->
+                // This shouldn't be called since we set looping to true
+                Log.d("SecureMediaPagerAdapter", "Video completed: $videoName")
+            }
+            
+            Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
+            
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
             holder.loadingIndicator.visibility = View.GONE
-            holder.videoView.visibility = View.VISIBLE
-            
-            // Set video to loop
-            mediaPlayer.isLooping = true
-            
-            // Start playing automatically
-            holder.videoView.start()
-        }
-        
-        holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
-            Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
-            holder.loadingIndicator.visibility = View.GONE
-            true
-        }
-        
-        holder.videoView.setOnCompletionListener { mediaPlayer ->
-            // This shouldn't be called since we set looping to true
-            Log.d("SecureMediaPagerAdapter", "Video completed: $videoName")
         }
     }
     
