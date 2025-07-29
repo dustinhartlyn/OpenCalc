@@ -308,26 +308,27 @@ class SecureMediaPagerAdapter(
     private fun bindPhoto(holder: PhotoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading photo: ${media.name}")
         
-        // Stop any playing videos when switching to photo
-        if (currentVideoHolder != null) {
-            pauseAllVideos()
-            Log.d("SecureMediaPagerAdapter", "Stopped videos when switching to photo")
-        }
-        
-        // Clear previous image to prevent displaying wrong content
-        holder.cleanup()
-        
-        // Validate media data before proceeding
-        val encryptedData = media.getEncryptedData()
-        if (encryptedData.isEmpty()) {
-            Log.e("SecureMediaPagerAdapter", "Empty encrypted data for photo: ${media.name}")
-            setErrorImage(holder)
-            return
-        }
-        
-        // First check if we have a preloaded bitmap
-        val cacheKey = media.name + "_" + media.id
-        synchronized(photoPreloadCache) {
+        try {
+            // Stop any playing videos when switching to photo
+            if (currentVideoHolder != null) {
+                pauseAllVideos()
+                Log.d("SecureMediaPagerAdapter", "Stopped videos when switching to photo")
+            }
+            
+            // Clear previous image to prevent displaying wrong content
+            holder.cleanup()
+            
+            // Validate media data before proceeding
+            val encryptedData = media.getEncryptedData()
+            if (encryptedData.isEmpty()) {
+                Log.e("SecureMediaPagerAdapter", "Empty encrypted data for photo: ${media.name}")
+                setErrorImage(holder)
+                return
+            }
+            
+            // First check if we have a preloaded bitmap
+            val cacheKey = media.name + "_" + media.id
+            synchronized(photoPreloadCache) {
             photoPreloadCache[cacheKey]?.let { cachedBitmap ->
                 Log.d("SecureMediaPagerAdapter", "Using preloaded photo: ${media.name}")
                 holder.setImageBitmap(cachedBitmap)
@@ -429,6 +430,10 @@ class SecureMediaPagerAdapter(
             Log.w("SecureMediaPagerAdapter", "No decryption key available for photo: ${media.name}")
             setErrorImage(holder)
         }
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Critical error in bindPhoto for ${media.name}", e)
+            setErrorImage(holder)
+        }
     }
     
     private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
@@ -478,10 +483,11 @@ class SecureMediaPagerAdapter(
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading video: ${media.name}")
         
-        // First cleanup any existing video state to prevent conflicts
-        holder.cleanup()
-        
-        // Set this as the current video holder AFTER cleanup
+        try {
+            // First cleanup any existing video state to prevent conflicts
+            holder.cleanup()
+            
+            // Set this as the current video holder AFTER cleanup
         setCurrentVideoHolder(holder)
         
         if (key != null) {
@@ -638,6 +644,10 @@ class SecureMediaPagerAdapter(
             }.start()
         } else {
             Log.w("SecureMediaPagerAdapter", "No decryption key available for video: ${media.name}")
+            holder.loadingContainer.visibility = View.GONE
+        }
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Critical error in bindVideo for ${media.name}", e)
             holder.loadingContainer.visibility = View.GONE
         }
     }

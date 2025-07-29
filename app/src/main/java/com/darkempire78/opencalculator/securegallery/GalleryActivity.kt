@@ -657,8 +657,20 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Load thumbnails after they've been generated in background
     private fun loadGeneratedThumbnails(encryptedMedia: List<SecureMedia>, galleryName: String, key: javax.crypto.spec.SecretKeySpec) {
+        android.util.Log.d("SecureGallery", "Loading generated thumbnails for ${encryptedMedia.size} new media items")
+        
+        // Find the starting position for new media in the decryptedMedia list
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val allMedia = gallery.media
+        
+        // Calculate where the new media starts in the full media list
+        val startIndexInFullList = allMedia.size - encryptedMedia.size
+        
         // Load the pre-generated thumbnails for immediate display
-        val newMediaThumbnails = encryptedMedia.mapNotNull { mediaItem ->
+        encryptedMedia.forEachIndexed { localIndex, mediaItem ->
+            val globalIndex = startIndexInFullList + localIndex
+            
             try {
                 val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
                 if (File(thumbnailPath).exists()) {
@@ -666,25 +678,27 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                         VideoUtils.getVideoDuration(mediaItem, key)
                     } else null
-                    MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
+                    val thumbnail = MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
+                    
+                    // Ensure decryptedMedia list is large enough
+                    while (decryptedMedia.size <= globalIndex) {
+                        decryptedMedia.add(null)
+                    }
+                    
+                    // Set the thumbnail at the correct position
+                    decryptedMedia[globalIndex] = thumbnail
+                    photosAdapter?.notifyItemChanged(globalIndex)
+                    
+                    android.util.Log.d("SecureGallery", "Set new thumbnail at position $globalIndex for: ${mediaItem.name}")
                 } else {
                     android.util.Log.w("SecureGallery", "Thumbnail file not found for: ${mediaItem.name}")
-                    null
                 }
             } catch (e: Exception) {
                 android.util.Log.e("SecureGallery", "Failed to load generated thumbnail for: ${mediaItem.name}", e)
-                null
             }
         }
         
-        // Add new thumbnails to the decryptedMedia list (without clearing existing ones)
-        val startPosition = decryptedMedia.size
-        decryptedMedia.addAll(newMediaThumbnails)
-        
-        // Refresh the UI to show new media immediately using range insertion for better performance
-        photosAdapter?.notifyItemRangeInserted(startPosition, newMediaThumbnails.size)
-        
-        android.util.Log.d("SecureGallery", "Added ${newMediaThumbnails.size} new thumbnails. Total: ${decryptedMedia.size}")
+        android.util.Log.d("SecureGallery", "Completed loading ${encryptedMedia.size} new thumbnails. Total decryptedMedia size: ${decryptedMedia.size}")
     }
 
     private fun enterDeleteMode() {
@@ -1240,13 +1254,27 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 } else {
                     // Normal mode - click to view media
                     holder.itemView.setOnClickListener {
-                        isMediaViewerActive = true
-                        val intent = android.content.Intent(this@GalleryActivity, SecureMediaViewerActivity::class.java)
-                        intent.putExtra(SecureMediaViewerActivity.EXTRA_GALLERY_NAME, galleryName)
-                        intent.putExtra(SecureMediaViewerActivity.EXTRA_POSITION, position)
-                        intent.putExtra(SecureMediaViewerActivity.EXTRA_PIN, pin)
-                        intent.putExtra(SecureMediaViewerActivity.EXTRA_SALT, salt)
-                        photoViewerLauncher.launch(intent)
+                        // Only allow viewing if the thumbnail is loaded (not null)
+                        val mediaThumbnail = if (isOrganizeMode && position < organizeMedia.size) {
+                            organizeMedia[position]
+                        } else if (position < decryptedMedia.size) {
+                            decryptedMedia[position]
+                        } else {
+                            null
+                        }
+                        
+                        if (mediaThumbnail != null) {
+                            isMediaViewerActive = true
+                            val intent = android.content.Intent(this@GalleryActivity, SecureMediaViewerActivity::class.java)
+                            intent.putExtra(SecureMediaViewerActivity.EXTRA_GALLERY_NAME, galleryName)
+                            intent.putExtra(SecureMediaViewerActivity.EXTRA_POSITION, position) // This position matches the media list
+                            intent.putExtra(SecureMediaViewerActivity.EXTRA_PIN, pin)
+                            intent.putExtra(SecureMediaViewerActivity.EXTRA_SALT, salt)
+                            android.util.Log.d("SecureGallery", "Opening media viewer at position $position")
+                            photoViewerLauncher.launch(intent)
+                        } else {
+                            android.util.Log.w("SecureGallery", "Cannot open media at position $position - thumbnail not loaded")
+                        }
                     }
                     
                     // Long press to enter delete mode
