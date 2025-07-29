@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.util.Log
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -208,22 +209,38 @@ object VideoUtils {
                 return null
             }
             
-            // Decrypt the video data
+            // Decrypt the video data using streaming to avoid memory issues
             val iv = encryptedVideoData.copyOfRange(0, 16)
-            val ciphertext = encryptedVideoData.copyOfRange(16, encryptedVideoData.size)
-            val decryptedData = CryptoUtils.decrypt(iv, ciphertext, key)
-            
-            Log.d("VideoUtils", "Decrypted video data size: ${decryptedData.size}")
             
             // Create a temporary file to store the decrypted video
             tempFile = File.createTempFile("temp_video_thumb_", ".mp4")
             tempFile.deleteOnExit()
             
-            val fos = FileOutputStream(tempFile)
-            fos.write(decryptedData)
-            fos.close()
+            // Use streaming decryption to avoid loading entire file into memory
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
-            Log.d("VideoUtils", "Temporary video file created: ${tempFile.absolutePath}")
+            val inputStream = ByteArrayInputStream(encryptedVideoData, 16, encryptedVideoData.size - 16)
+            val outputStream = FileOutputStream(tempFile)
+            
+            val buffer = ByteArray(8192)
+            var bytesRead: Int
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                val decrypted = cipher.update(buffer, 0, bytesRead)
+                if (decrypted != null) {
+                    outputStream.write(decrypted)
+                }
+            }
+            
+            val finalData = cipher.doFinal()
+            if (finalData.isNotEmpty()) {
+                outputStream.write(finalData)
+            }
+            
+            inputStream.close()
+            outputStream.close()
+            
+            Log.d("VideoUtils", "Video decryption completed, file size: ${tempFile.length()}")
             
             // Use MediaMetadataRetriever to get thumbnail
             retriever = MediaMetadataRetriever()
