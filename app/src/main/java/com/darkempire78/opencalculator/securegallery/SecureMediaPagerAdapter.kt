@@ -2,7 +2,29 @@ package com.darkempire78.opencalculator.securegallery
 
 import android.app.Activity
 import android.content.Context
-import android.graphics.Bitmap
+impor    private fun setCurrentVideoHolder(holder: VideoViewHolder) {
+        // Stop previous video completely before switching
+        currentVideoHolder?.let { prevHolder ->
+            try {
+                prevHolder.mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) {
+                        mp.stop()
+                        Log.d("SecureMediaPagerAdapter", "Stopped previous video completely on switch")
+                    }
+                }
+                if (prevHolder.videoView.isPlaying) {
+                    prevHolder.videoView.stopPlayback()
+                    Log.d("SecureMediaPagerAdapter", "Stopped previous VideoView playback")
+                }
+                // Hide loading container if still showing
+                prevHolder.loadingContainer.visibility = View.GONE
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error stopping previous video", e)
+            }
+        }
+        currentVideoHolder = holder
+        Log.d("SecureMediaPagerAdapter", "Set new current video holder")
+    }Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -69,8 +91,15 @@ class SecureMediaPagerAdapter(
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
         when (holder) {
-            is VideoViewHolder -> holder.cleanup()
-            is PhotoViewHolder -> holder.cleanup()
+            is VideoViewHolder -> {
+                // Immediately stop and clean up videos when views are recycled
+                holder.cleanup()
+                Log.d("SecureMediaPagerAdapter", "Video view recycled and cleaned up")
+            }
+            is PhotoViewHolder -> {
+                holder.cleanup()
+                Log.d("SecureMediaPagerAdapter", "Photo view recycled and cleaned up")
+            }
         }
     }
     
@@ -901,11 +930,14 @@ class SecureMediaPagerAdapter(
         var mediaPlayer: MediaPlayer? = null
         
         fun cleanup() {
+            // Stop and clean up MediaPlayer first
             mediaPlayer?.let { mp ->
                 try {
                     if (mp.isPlaying) {
                         mp.stop()
+                        Log.d("SecureMediaPagerAdapter", "Stopped MediaPlayer during cleanup")
                     }
+                    mp.reset()
                     mp.release()
                 } catch (e: Exception) {
                     Log.w("SecureMediaPagerAdapter", "Error cleaning up MediaPlayer", e)
@@ -913,12 +945,23 @@ class SecureMediaPagerAdapter(
                 mediaPlayer = null
             }
             
+            // Stop and clean up VideoView
             try {
-                videoView.stopPlayback()
+                if (videoView.isPlaying) {
+                    videoView.stopPlayback()
+                    Log.d("SecureMediaPagerAdapter", "Stopped VideoView during cleanup")
+                }
                 videoView.suspend()
+                videoView.setVideoURI(null)
             } catch (e: Exception) {
                 Log.w("SecureMediaPagerAdapter", "Error cleaning up VideoView", e)
             }
+            
+            // Reset UI state
+            loadingContainer.visibility = View.GONE
+            videoView.visibility = View.GONE
+            
+            Log.d("SecureMediaPagerAdapter", "VideoViewHolder cleanup completed")
         }
     }
 }

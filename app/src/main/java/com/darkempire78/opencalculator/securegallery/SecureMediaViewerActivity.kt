@@ -98,6 +98,15 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                     // and resume playback automatically
                 }
             }
+            
+            override fun onPageScrollStateChanged(state: Int) {
+                super.onPageScrollStateChanged(state)
+                // When user starts swiping, immediately stop all videos to prevent conflicts
+                if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
+                    adapter.pauseAllVideos()
+                    Log.d("SecureMediaViewer", "User started swiping, stopping all videos")
+                }
+            }
         })
         
         // Set up return behavior - return the current position

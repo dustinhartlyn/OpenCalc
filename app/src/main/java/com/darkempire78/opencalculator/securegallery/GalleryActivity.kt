@@ -680,11 +680,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             }
         }
         
-        // Add new thumbnails to the decryptedMedia list
+        // Add new thumbnails to the decryptedMedia list (without clearing existing ones)
+        val startPosition = decryptedMedia.size
         decryptedMedia.addAll(newMediaThumbnails)
         
-        // Refresh the UI to show new media immediately
-        photosAdapter?.notifyDataSetChanged()
+        // Refresh the UI to show new media immediately using range insertion for better performance
+        photosAdapter?.notifyItemRangeInserted(startPosition, newMediaThumbnails.size)
+        
+        android.util.Log.d("SecureGallery", "Added ${newMediaThumbnails.size} new thumbnails. Total: ${decryptedMedia.size}")
     }
 
     private fun enterDeleteMode() {
