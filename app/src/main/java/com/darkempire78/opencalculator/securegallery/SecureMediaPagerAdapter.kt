@@ -354,24 +354,24 @@ class SecureMediaPagerAdapter(
             
             Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
             
-            // Add a shorter timeout to detect if VideoView never calls onPrepared
+            // Add a timeout to detect if VideoView never calls onPrepared
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (holder.loadingIndicator.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
-                    Log.w("SecureMediaPagerAdapter", "Attempting alternative MediaPlayer approach...")
+                    Log.w("SecureMediaPagerAdapter", "Attempting VideoView reset...")
                     
-                    // Try alternative approach with MediaPlayer directly
+                    // Try alternative approach - reset and retry
                     try {
                         // Reset VideoView to ensure clean state
                         holder.videoView.stopPlayback()
                         holder.videoView.suspend()
                         
-                        // Wait a moment then try again with VideoView
+                        // Wait a moment then try again
                         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            Log.d("SecureMediaPagerAdapter", "Retrying VideoView setup with fresh state...")
+                            Log.d("SecureMediaPagerAdapter", "Retrying VideoView setup...")
                             
                             // Try setting the URI again
-                            holder.videoView.setVideoURI(videoUri)
+                            holder.videoView.setVideoURI(uri)
                             
                             // Set a new OnPreparedListener for retry
                             holder.videoView.setOnPreparedListener { mediaPlayer ->
@@ -387,10 +387,8 @@ class SecureMediaPagerAdapter(
                                 if (holder.loadingIndicator.visibility == View.VISIBLE) {
                                     Log.e("SecureMediaPagerAdapter", "VideoView retry also failed for $videoName")
                                     holder.loadingIndicator.visibility = View.GONE
-                                    // Could add error message here if needed
                                 }
                             }, 5000) // 5 second timeout for retry
-                        }, 500) // Wait 500ms before retry
                         }, 500) // Wait 500ms before retry
                         
                     } catch (e: Exception) {
@@ -398,7 +396,7 @@ class SecureMediaPagerAdapter(
                         holder.loadingIndicator.visibility = View.GONE
                     }
                 }
-            }, 3000) // Reduced to 3 second timeout
+            }, 3000) // 3 second timeout
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
