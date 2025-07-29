@@ -139,7 +139,7 @@ object VideoUtils {
             
             val buffer = ByteArray(8192)
             var bytesRead: Int
-            while (inputStream.read(buffer).also { bytesRead: Int -> bytesRead = it } != -1) {
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                 val decrypted = cipher.update(buffer, 0, bytesRead)
                 if (decrypted != null) {
                     outputStream.write(decrypted)
@@ -205,7 +205,7 @@ object VideoUtils {
             
             val buffer = ByteArray(8192)
             var bytesRead: Int
-            while (inputStream.read(buffer).also { bytesRead: Int -> bytesRead = it } != -1) {
+            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                 val decrypted = cipher.update(buffer, 0, bytesRead)
                 if (decrypted != null) {
                     outputStream.write(decrypted)
