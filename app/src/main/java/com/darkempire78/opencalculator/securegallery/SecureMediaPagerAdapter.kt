@@ -88,18 +88,27 @@ class SecureMediaPagerAdapter(
             try {
                 holder.mediaPlayer?.let { mp ->
                     if (mp.isPlaying) {
-                        mp.pause()
-                        Log.d("SecureMediaPagerAdapter", "Paused video due to focus loss")
+                        mp.stop() // Use stop instead of pause for complete cleanup
+                        mp.reset() // Reset the MediaPlayer to prevent state issues
+                        Log.d("SecureMediaPagerAdapter", "Stopped and reset video due to focus loss")
                     }
                 }
-                // Also pause VideoView if it's being used
+                // Also stop VideoView if it's being used
                 if (holder.videoView.isPlaying) {
-                    holder.videoView.pause()
+                    holder.videoView.stopPlayback()
+                    holder.videoView.suspend() // Suspend to free resources
+                    Log.d("SecureMediaPagerAdapter", "Stopped VideoView playback")
                 }
+                // Reset UI state
+                holder.loadingContainer.visibility = View.GONE
+                holder.videoView.visibility = View.GONE
             } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Error pausing video", e)
+                Log.w("SecureMediaPagerAdapter", "Error stopping videos", e)
             }
         }
+        
+        // Clear current video holder to prevent further operations
+        currentVideoHolder = null
     }
     
     fun resumeCurrentVideo() {
@@ -292,6 +301,12 @@ class SecureMediaPagerAdapter(
     private fun bindPhoto(holder: PhotoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading photo: ${media.name}")
         
+        // Stop any playing videos when switching to photo
+        if (currentVideoHolder != null) {
+            pauseAllVideos()
+            Log.d("SecureMediaPagerAdapter", "Stopped videos when switching to photo")
+        }
+        
         // Clear previous image to prevent displaying wrong content
         holder.cleanup()
         
@@ -424,7 +439,10 @@ class SecureMediaPagerAdapter(
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading video: ${media.name}")
         
-        // Set this as the current video holder
+        // First cleanup any existing video state to prevent conflicts
+        holder.cleanup()
+        
+        // Set this as the current video holder AFTER cleanup
         setCurrentVideoHolder(holder)
         
         if (key != null) {

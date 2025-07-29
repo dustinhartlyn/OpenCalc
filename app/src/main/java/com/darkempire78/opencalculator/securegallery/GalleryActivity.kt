@@ -902,8 +902,17 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // This ensures security works again after each legitimate return to gallery
         android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
         
-        // Refresh gallery data to show any new media that was added
-        refreshGalleryData()
+        // Only refresh if we're returning from photo picker or if media viewer was NOT active
+        // This prevents duplicate thumbnails when returning from photo viewer
+        if (isPhotoPickerActive || !isMediaViewerActive) {
+            refreshGalleryData()
+        } else {
+            android.util.Log.d("SecureGallery", "Skipping refresh - returning from media viewer")
+        }
+        
+        // Reset flags
+        isPhotoPickerActive = false
+        isMediaViewerActive = false
     }
     
     private fun refreshGalleryData() {
@@ -913,20 +922,34 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
-        // Check if media count has changed
-        if (gallery.media.size != decryptedMedia.size || gallery.media.size > decryptedMedia.count { it != null }) {
-            android.util.Log.d("SecureGallery", "Media count changed, refreshing gallery: ${gallery.media.size} media, ${decryptedMedia.size} thumbnails")
+        // Check if media count has changed and we need a refresh
+        val hasNewMedia = gallery.media.size > decryptedMedia.size
+        val hasMissingThumbnails = gallery.media.size > decryptedMedia.count { it != null }
+        
+        if (hasNewMedia || hasMissingThumbnails) {
+            android.util.Log.d("SecureGallery", "Gallery changed - Media: ${gallery.media.size}, Thumbnails: ${decryptedMedia.size}, Missing: ${hasMissingThumbnails}")
             
-            // Clear existing data for refresh
-            decryptedMedia.clear()
-            photosAdapter?.notifyDataSetChanged()
-            
-            // Load thumbnails asynchronously to prevent ANR - DO NOT load synchronously here!
-            if (key != null && gallery.media.isNotEmpty()) {
-                loadInitialThumbnails(gallery.media, key)
+            // Only clear and reload if we have new media or significant changes
+            if (hasNewMedia) {
+                // Clear existing data for full refresh
+                decryptedMedia.clear()
+                photosAdapter?.notifyDataSetChanged()
+                
+                // Load thumbnails asynchronously to prevent ANR
+                if (key != null && gallery.media.isNotEmpty()) {
+                    loadInitialThumbnails(gallery.media, key)
+                }
+            } else if (hasMissingThumbnails) {
+                // Just load missing thumbnails without clearing
+                val missingMedia = gallery.media.drop(decryptedMedia.size)
+                if (key != null && missingMedia.isNotEmpty()) {
+                    loadThumbnailsAsync(missingMedia, key)
+                }
             }
             
-            android.util.Log.d("SecureGallery", "Gallery refresh started asynchronously")
+            android.util.Log.d("SecureGallery", "Gallery refresh completed")
+        } else {
+            android.util.Log.d("SecureGallery", "No gallery refresh needed - Media: ${gallery.media.size}, Thumbnails: ${decryptedMedia.size}")
         }
     }
     
