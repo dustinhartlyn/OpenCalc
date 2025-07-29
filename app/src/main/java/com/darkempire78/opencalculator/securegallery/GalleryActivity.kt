@@ -1400,7 +1400,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             for ((index, photo) in gallery.photos.withIndex()) {
                 try {
                     // Decrypt photo
-                    val encryptedData = photo.getEncryptedData()
+                    val encryptedData = photo.encryptedData
                     val iv = encryptedData.copyOfRange(0, 16)
                     val ct = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = try {

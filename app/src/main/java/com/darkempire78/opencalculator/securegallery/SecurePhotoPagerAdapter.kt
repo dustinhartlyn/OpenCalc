@@ -78,7 +78,7 @@ class SecurePhotoPagerAdapter(
                 val key = CryptoUtils.deriveKey(pin, salt)
                 
                 // Ensure we have enough data for IV and ciphertext
-                val encryptedData = photo.getEncryptedData()
+                val encryptedData = photo.encryptedData
                 if (encryptedData.size < 16) {
                     Log.e("SecurePhotoPagerAdapter", "Encrypted data too small for photo: ${photo.name}")
                     holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -106,7 +106,7 @@ class SecurePhotoPagerAdapter(
                     Log.d("SecurePhotoPagerAdapter", "Attempting legacy decryption for photo: ${photo.name}")
                     val legacySalt = ByteArray(16) // Empty salt for legacy photos
                     val legacyKey = CryptoUtils.deriveKey(pin, legacySalt)
-                    val encryptedData = photo.getEncryptedData()
+                    val encryptedData = photo.encryptedData
                     val iv = encryptedData.copyOfRange(0, 16)
                     val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, legacyKey)
