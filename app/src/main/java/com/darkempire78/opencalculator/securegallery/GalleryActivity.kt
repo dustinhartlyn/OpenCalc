@@ -856,8 +856,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         
         // Clean up orphaned video thumbnails
-        if (currentGallery != null && currentMediaItems.isNotEmpty()) {
-            VideoUtils.cleanupOrphanedThumbnails(this, currentMediaItems)
+        val galleryName = intent.getStringExtra("gallery_name") ?: ""
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        val media = gallery?.media ?: mutableListOf()
+        if (gallery != null && media.isNotEmpty()) {
+            VideoUtils.cleanupOrphanedThumbnails(this, media)
         }
         
         android.util.Log.d("SecureGallery", "GalleryActivity onCreate() completed successfully")
@@ -1500,11 +1503,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private fun handleExportGallery(fileUri: android.net.Uri) {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val media = gallery.media ?: mutableListOf()
         
         try {
             contentResolver.openOutputStream(fileUri)?.use { outputStream ->
                 // Collect cached thumbnails for export
-                val cachedThumbnails = VideoUtils.collectCachedThumbnails(this, currentMediaItems)
+                val cachedThumbnails = VideoUtils.collectCachedThumbnails(this, media)
                 
                 // Create a serializable export format
                 val exportData = GalleryExportData(
@@ -1512,7 +1516,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     salt = gallery.salt,
                     pinHash = gallery.pinHash,
                     photos = gallery.photos,
-                    media = currentMediaItems, // Include all media items
+                    media = media, // Include all media items
                     videoThumbnails = cachedThumbnails, // Include cached thumbnails
                     notes = gallery.notes,
                     sortOrder = gallery.sortOrder,

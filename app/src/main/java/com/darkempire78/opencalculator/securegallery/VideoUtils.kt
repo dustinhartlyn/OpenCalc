@@ -21,7 +21,7 @@ object VideoUtils {
             val thumbnail = if (secureMedia.usesExternalStorage()) {
                 generateVideoThumbnailFromFile(secureMedia.filePath!!, key)
             } else {
-                generateVideoThumbnail(secureMedia.getEncryptedData(), key)
+                generateVideoThumbnailFromData(secureMedia.getEncryptedData(), key)
             }
             
             if (thumbnail != null) {
@@ -309,10 +309,11 @@ object VideoUtils {
             val maxBytesForThumbnail = 2 * 1024 * 1024 // 2MB
             val buffer = ByteArray(8192)
             var totalBytesRead = 0
-            var bytesRead: Int
             
-            while (totalBytesRead < maxBytesForThumbnail && 
-                   cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+            while (totalBytesRead < maxBytesForThumbnail) {
+                val bytesRead = cipherInputStream.read(buffer)
+                if (bytesRead == -1) break
+                
                 val bytesToWrite = minOf(bytesRead, maxBytesForThumbnail - totalBytesRead)
                 outputStream.write(buffer, 0, bytesToWrite)
                 totalBytesRead += bytesToWrite
@@ -373,10 +374,11 @@ object VideoUtils {
             val maxBytesForThumbnail = 10 * 1024 * 1024 // 10MB
             val buffer = ByteArray(8192)
             var totalBytesRead = 0
-            var bytesRead: Int
             
-            while (totalBytesRead < maxBytesForThumbnail && 
-                   cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+            while (totalBytesRead < maxBytesForThumbnail) {
+                val bytesRead = cipherInputStream.read(buffer)
+                if (bytesRead == -1) break
+                
                 val bytesToWrite = minOf(bytesRead, maxBytesForThumbnail - totalBytesRead)
                 outputStream.write(buffer, 0, bytesToWrite)
                 totalBytesRead += bytesToWrite
@@ -442,8 +444,9 @@ object VideoUtils {
             
             // Copy decrypted data in chunks
             val buffer = ByteArray(8192)
-            var bytesRead: Int
-            while (cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+            while (true) {
+                val bytesRead = cipherInputStream.read(buffer)
+                if (bytesRead == -1) break
                 outputStream.write(buffer, 0, bytesRead)
             }
             
