@@ -56,6 +56,11 @@
             android:theme="@style/FullscreenTheme" />
             
         <activity
+            android:name="com.darkempire78.opencalculator.securegallery.SecureMediaViewerActivity"
+            android:exported="false"
+            android:theme="@style/FullscreenTheme" />
+            
+        <activity
             android:name="com.darkempire78.opencalculator.securegallery.NoteEditorActivity"
             android:exported="false" />
 
