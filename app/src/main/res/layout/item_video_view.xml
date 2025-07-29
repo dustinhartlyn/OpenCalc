@@ -10,6 +10,14 @@
         android:layout_height="match_parent"
         android:layout_gravity="center" />
 
+    <!-- Fallback SurfaceView for MediaPlayer -->
+    <SurfaceView
+        android:id="@+id/surfaceView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_gravity="center"
+        android:visibility="gone" />
+
     <!-- Loading indicator -->
     <ProgressBar
         android:id="@+id/loadingIndicator"

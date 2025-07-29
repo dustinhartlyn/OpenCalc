@@ -9,6 +9,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.util.Log
 import android.view.LayoutInflater
+import android.view.SurfaceView
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ProgressBar
@@ -59,6 +60,13 @@ class SecureMediaPagerAdapter(
     }
     
     override fun getItemCount(): Int = mediaList.size
+    
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        if (holder is VideoViewHolder) {
+            holder.cleanup()
+        }
+    }
     
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val media = mediaList[position]
@@ -358,41 +366,43 @@ class SecureMediaPagerAdapter(
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (holder.loadingIndicator.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
-                    Log.w("SecureMediaPagerAdapter", "Attempting VideoView reset...")
+                    Log.w("SecureMediaPagerAdapter", "Switching to MediaPlayer with SurfaceView...")
                     
-                    // Try alternative approach - reset and retry
+                    // Switch to MediaPlayer approach
                     try {
-                        // Reset VideoView to ensure clean state
-                        holder.videoView.stopPlayback()
-                        holder.videoView.suspend()
+                        // Hide VideoView and show SurfaceView
+                        holder.videoView.visibility = View.GONE
+                        holder.surfaceView.visibility = View.VISIBLE
                         
-                        // Wait a moment then try again
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            Log.d("SecureMediaPagerAdapter", "Retrying VideoView setup...")
+                        // Create and setup MediaPlayer
+                        holder.mediaPlayer = MediaPlayer().apply {
+                            setDataSource(tempFile.absolutePath)
+                            setDisplay(holder.surfaceView.holder)
+                            isLooping = true
                             
-                            // Try setting the URI again
-                            holder.videoView.setVideoURI(uri)
-                            
-                            // Set a new OnPreparedListener for retry
-                            holder.videoView.setOnPreparedListener { mediaPlayer ->
-                                Log.d("SecureMediaPagerAdapter", "VideoView retry prepared successfully for $videoName")
+                            setOnPreparedListener { mp ->
+                                Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
                                 holder.loadingIndicator.visibility = View.GONE
-                                holder.videoView.visibility = View.VISIBLE
-                                mediaPlayer.isLooping = true
-                                mediaPlayer.start()
+                                mp.start()
                             }
                             
-                            // Set another timeout for the retry
-                            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                                if (holder.loadingIndicator.visibility == View.VISIBLE) {
-                                    Log.e("SecureMediaPagerAdapter", "VideoView retry also failed for $videoName")
-                                    holder.loadingIndicator.visibility = View.GONE
-                                }
-                            }, 5000) // 5 second timeout for retry
-                        }, 500) // Wait 500ms before retry
+                            setOnErrorListener { mp, what, extra ->
+                                Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
+                                holder.loadingIndicator.visibility = View.GONE
+                                mp.release()
+                                holder.mediaPlayer = null
+                                true
+                            }
+                            
+                            setOnVideoSizeChangedListener { mp, width, height ->
+                                Log.d("SecureMediaPagerAdapter", "Video size changed: ${width}x${height}")
+                            }
+                            
+                            prepareAsync()
+                        }
                         
                     } catch (e: Exception) {
-                        Log.e("SecureMediaPagerAdapter", "Failed alternative approach for $videoName", e)
+                        Log.e("SecureMediaPagerAdapter", "Failed MediaPlayer approach for $videoName", e)
                         holder.loadingIndicator.visibility = View.GONE
                     }
                 }
@@ -442,6 +452,29 @@ class SecureMediaPagerAdapter(
     
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val videoView: VideoView = itemView.findViewById(R.id.videoView)
+        val surfaceView: SurfaceView = itemView.findViewById(R.id.surfaceView)
         val loadingIndicator: ProgressBar = itemView.findViewById(R.id.loadingIndicator)
+        var mediaPlayer: MediaPlayer? = null
+        
+        fun cleanup() {
+            mediaPlayer?.let { mp ->
+                try {
+                    if (mp.isPlaying) {
+                        mp.stop()
+                    }
+                    mp.release()
+                } catch (e: Exception) {
+                    Log.w("SecureMediaPagerAdapter", "Error cleaning up MediaPlayer", e)
+                }
+                mediaPlayer = null
+            }
+            
+            try {
+                videoView.stopPlayback()
+                videoView.suspend()
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error cleaning up VideoView", e)
+            }
+        }
     }
 }
