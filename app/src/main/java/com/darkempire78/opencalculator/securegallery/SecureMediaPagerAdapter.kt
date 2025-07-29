@@ -2,29 +2,7 @@ package com.darkempire78.opencalculator.securegallery
 
 import android.app.Activity
 import android.content.Context
-impor    private fun setCurrentVideoHolder(holder: VideoViewHolder) {
-        // Stop previous video completely before switching
-        currentVideoHolder?.let { prevHolder ->
-            try {
-                prevHolder.mediaPlayer?.let { mp ->
-                    if (mp.isPlaying) {
-                        mp.stop()
-                        Log.d("SecureMediaPagerAdapter", "Stopped previous video completely on switch")
-                    }
-                }
-                if (prevHolder.videoView.isPlaying) {
-                    prevHolder.videoView.stopPlayback()
-                    Log.d("SecureMediaPagerAdapter", "Stopped previous VideoView playback")
-                }
-                // Hide loading container if still showing
-                prevHolder.loadingContainer.visibility = View.GONE
-            } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Error stopping previous video", e)
-            }
-        }
-        currentVideoHolder = holder
-        Log.d("SecureMediaPagerAdapter", "Set new current video holder")
-    }Bitmap
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaMetadataRetriever
 import android.media.MediaPlayer
@@ -143,24 +121,28 @@ class SecureMediaPagerAdapter(
         }
     }
     
-    fun setCurrentVideoHolder(holder: VideoViewHolder?) {
-        // Pause previous video when switching
+    private fun setCurrentVideoHolder(holder: VideoViewHolder?) {
+        // Stop previous video completely before switching
         currentVideoHolder?.let { prevHolder ->
             try {
                 prevHolder.mediaPlayer?.let { mp ->
                     if (mp.isPlaying) {
-                        mp.pause()
-                        Log.d("SecureMediaPagerAdapter", "Paused previous video on scroll")
+                        mp.stop()
+                        Log.d("SecureMediaPagerAdapter", "Stopped previous video completely on switch")
                     }
                 }
                 if (prevHolder.videoView.isPlaying) {
-                    prevHolder.videoView.pause()
+                    prevHolder.videoView.stopPlayback()
+                    Log.d("SecureMediaPagerAdapter", "Stopped previous VideoView playback")
                 }
+                // Hide loading container if still showing
+                prevHolder.loadingContainer.visibility = View.GONE
             } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Error pausing previous video", e)
+                Log.w("SecureMediaPagerAdapter", "Error stopping previous video", e)
             }
         }
         currentVideoHolder = holder
+        Log.d("SecureMediaPagerAdapter", "Set new current video holder")
     }
     
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
