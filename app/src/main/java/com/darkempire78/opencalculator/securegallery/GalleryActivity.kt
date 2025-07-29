@@ -353,6 +353,26 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         return thumbnail
     }
     
+    // Load thumbnails asynchronously to prevent ANR
+    private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+        Thread {
+            val loadedThumbnails = mutableListOf<MediaThumbnail>()
+            
+            media.forEachIndexed { index, mediaItem ->
+                val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
+                if (thumbnail != null) {
+                    loadedThumbnails.add(thumbnail)
+                    
+                    // Update UI on main thread after each thumbnail loads
+                    runOnUiThread {
+                        decryptedMedia.add(thumbnail)
+                        photosAdapter?.notifyItemInserted(decryptedMedia.size - 1)
+                    }
+                }
+            }
+        }.start()
+    }
+    
     // Preload thumbnails for smooth scrolling
     private fun preloadThumbnails(centerPosition: Int, gallery: Gallery, key: javax.crypto.spec.SecretKeySpec?) {
         if (key == null) return
@@ -915,17 +935,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
         photosRecyclerView.layoutManager = androidx.recyclerview.widget.GridLayoutManager(this, 2)
         
-        // Decrypt and display media as thumbnails using optimized loading
-        val decryptedMediaList = media.mapIndexedNotNull { index, mediaItem ->
-            if (key != null) {
-                loadThumbnailOptimized(mediaItem, key, index)
-            } else {
-                null
-            }
-        }
+        // Initialize empty media list - thumbnails will be loaded asynchronously
+        this.decryptedMedia = mutableListOf()
         
-        // Assign to class property
-        this.decryptedMedia = decryptedMediaList.toMutableList()
+        // Load thumbnails asynchronously to prevent ANR
+        if (key != null) {
+            loadThumbnailsAsync(media, key)
+        }
 
         photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
