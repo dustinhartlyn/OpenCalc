@@ -308,13 +308,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
                     deleteDialog = null
-                    // Refresh gallery UI (reload media)
-                    safeRecreate()
                 }
                 .setNegativeButton("Keep") { _, _ ->
                     deleteDialog = null
-                    // Refresh gallery UI (reload media)
-                    safeRecreate()
                 }
                 .create()
             deleteDialog?.show()
@@ -326,8 +322,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             if (hasPickerUris) {
                 Toast.makeText(this, "Media imported successfully. Original files remain in your gallery.", Toast.LENGTH_LONG).show()
             }
-            // Refresh gallery UI (reload media)
-            safeRecreate()
         }
     }
 

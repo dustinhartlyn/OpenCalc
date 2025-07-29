@@ -120,94 +120,116 @@ class SecureMediaPagerAdapter(
         Log.d("SecureMediaPagerAdapter", "Loading video: ${media.name}")
         
         if (key != null) {
-            try {
-                // Show loading indicator
-                holder.loadingIndicator.visibility = View.VISIBLE
-                holder.videoView.visibility = View.GONE
-                
-                // Create temporary file for video playback
-                val tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
-                tempFiles.add(tempFile)
-                
-                if (media.usesExternalStorage()) {
-                    // For file-based storage, decrypt file using streaming
-                    val encryptedFile = File(media.filePath!!)
-                    val inputStream = FileInputStream(encryptedFile)
-                    val outputStream = FileOutputStream(tempFile)
+            // Show loading indicator
+            holder.loadingIndicator.visibility = View.VISIBLE
+            holder.videoView.visibility = View.GONE
+            
+            // Decrypt and prepare video in background thread
+            Thread {
+                try {
+                    Log.d("SecureMediaPagerAdapter", "Starting video decryption in background for: ${media.name}")
                     
-                    // Read IV from file
-                    val iv = ByteArray(16)
-                    inputStream.read(iv)
+                    // Create temporary file for video playback
+                    val tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
+                    tempFiles.add(tempFile)
                     
-                    // Decrypt the rest using streaming
-                    val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
-                    cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
+                    if (media.usesExternalStorage()) {
+                        // For file-based storage, decrypt file using streaming
+                        val encryptedFile = File(media.filePath!!)
+                        val inputStream = FileInputStream(encryptedFile)
+                        val outputStream = FileOutputStream(tempFile)
+                        
+                        Log.d("SecureMediaPagerAdapter", "Decrypting video file: ${encryptedFile.length()} bytes")
+                        
+                        // Read IV from file
+                        val iv = ByteArray(16)
+                        inputStream.read(iv)
+                        
+                        // Decrypt the rest using streaming
+                        val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
+                        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
+                        
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                            val decrypted = cipher.update(buffer, 0, bytesRead)
+                            if (decrypted != null) {
+                                outputStream.write(decrypted)
+                            }
+                        }
+                        
+                        val finalData = cipher.doFinal()
+                        if (finalData.isNotEmpty()) {
+                            outputStream.write(finalData)
+                        }
+                        
+                        inputStream.close()
+                        outputStream.close()
+                    } else {
+                        // For in-memory storage, decrypt normally
+                        val encryptedData = media.getEncryptedData()
+                        val iv = encryptedData.copyOfRange(0, 16)
+                        val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                        
+                        val fos = FileOutputStream(tempFile)
+                        fos.write(decryptedBytes)
+                        fos.close()
+                    }
                     
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                        val decrypted = cipher.update(buffer, 0, bytesRead)
-                        if (decrypted != null) {
-                            outputStream.write(decrypted)
+                    Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
+                    
+                    // Setup video view on main thread
+                    (context as android.app.Activity).runOnUiThread {
+                        try {
+                            setupVideoView(holder, tempFile, media.name)
+                        } catch (e: Exception) {
+                            Log.e("SecureMediaPagerAdapter", "Failed to setup video view for ${media.name}", e)
+                            holder.loadingIndicator.visibility = View.GONE
                         }
                     }
                     
-                    val finalData = cipher.doFinal()
-                    if (finalData.isNotEmpty()) {
-                        outputStream.write(finalData)
+                } catch (e: Exception) {
+                    Log.e("SecureMediaPagerAdapter", "Failed to decrypt/play video: ${media.name}", e)
+                    (context as android.app.Activity).runOnUiThread {
+                        holder.loadingIndicator.visibility = View.GONE
                     }
-                    
-                    inputStream.close()
-                    outputStream.close()
-                } else {
-                    // For in-memory storage, decrypt normally
-                    val encryptedData = media.getEncryptedData()
-                    val iv = encryptedData.copyOfRange(0, 16)
-                    val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
-                    
-                    val fos = FileOutputStream(tempFile)
-                    fos.write(decryptedBytes)
-                    fos.close()
                 }
-                
-                // Setup video view
-                val uri = Uri.fromFile(tempFile)
-                holder.videoView.setVideoURI(uri)
-                
-                // Set up video listeners
-                holder.videoView.setOnPreparedListener { mediaPlayer ->
-                    Log.d("SecureMediaPagerAdapter", "Video prepared: ${media.name}")
-                    
-                    // Hide loading indicator and show video
-                    holder.loadingIndicator.visibility = View.GONE
-                    holder.videoView.visibility = View.VISIBLE
-                    
-                    // Set video to loop
-                    mediaPlayer.isLooping = true
-                    
-                    // Start playing automatically
-                    holder.videoView.start()
-                }
-                
-                holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
-                    Log.e("SecureMediaPagerAdapter", "Video error for ${media.name}: what=$what, extra=$extra")
-                    holder.loadingIndicator.visibility = View.GONE
-                    true
-                }
-                
-                holder.videoView.setOnCompletionListener { mediaPlayer ->
-                    // This shouldn't be called since we set looping to true
-                    Log.d("SecureMediaPagerAdapter", "Video completed: ${media.name}")
-                }
-                
-            } catch (e: Exception) {
-                Log.e("SecureMediaPagerAdapter", "Failed to decrypt/play video: ${media.name}", e)
-                holder.loadingIndicator.visibility = View.GONE
-            }
+            }.start()
         } else {
             Log.w("SecureMediaPagerAdapter", "No decryption key available for video: ${media.name}")
             holder.loadingIndicator.visibility = View.GONE
+        }
+    }
+    
+    private fun setupVideoView(holder: VideoViewHolder, tempFile: File, videoName: String) {
+        val uri = Uri.fromFile(tempFile)
+        holder.videoView.setVideoURI(uri)
+        
+        // Set up video listeners
+        holder.videoView.setOnPreparedListener { mediaPlayer ->
+            Log.d("SecureMediaPagerAdapter", "Video prepared: $videoName")
+            
+            // Hide loading indicator and show video
+            holder.loadingIndicator.visibility = View.GONE
+            holder.videoView.visibility = View.VISIBLE
+            
+            // Set video to loop
+            mediaPlayer.isLooping = true
+            
+            // Start playing automatically
+            holder.videoView.start()
+        }
+        
+        holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
+            Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
+            holder.loadingIndicator.visibility = View.GONE
+            true
+        }
+        
+        holder.videoView.setOnCompletionListener { mediaPlayer ->
+            // This shouldn't be called since we set looping to true
+            Log.d("SecureMediaPagerAdapter", "Video completed: $videoName")
         }
     }
     
