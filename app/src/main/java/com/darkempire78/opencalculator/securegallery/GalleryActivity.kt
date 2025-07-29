@@ -182,10 +182,17 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 encryptedFilePath = encryptedFile.absolutePath
                             )
                             
-                            // Generate and save thumbnail immediately during import
-                            VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
-                            
                             encryptedMedia.add(secureMedia)
+                            
+                            // Generate and save thumbnail in background to avoid blocking UI
+                            Thread {
+                                try {
+                                    VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
+                                    Log.d("SecureGallery", "Background thumbnail generation completed for ${secureMedia.name}")
+                                } catch (e: Exception) {
+                                    Log.e("SecureGallery", "Failed to generate thumbnail in background for ${secureMedia.name}", e)
+                                }
+                            }.start()
                         } else {
                             // For photos, check file size first to avoid OutOfMemoryError
                             val fileSize = try {

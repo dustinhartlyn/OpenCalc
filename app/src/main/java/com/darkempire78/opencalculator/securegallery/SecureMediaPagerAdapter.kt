@@ -1,5 +1,6 @@
 package com.darkempire78.opencalculator.securegallery
 
+import android.app.Activity
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -17,6 +18,7 @@ import com.github.chrisbanes.photoview.PhotoView
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.lang.ref.WeakReference
 
 class SecureMediaPagerAdapter(
     private val context: Context,
@@ -32,6 +34,7 @@ class SecureMediaPagerAdapter(
     
     private val tempFiles = mutableListOf<File>()
     private val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+    private val activityRef = WeakReference(context as? Activity)
     
     override fun getItemViewType(position: Int): Int {
         return when (mediaList[position].mediaType) {
@@ -179,20 +182,34 @@ class SecureMediaPagerAdapter(
                     
                     Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
                     
-                    // Setup video view on main thread
-                    (context as android.app.Activity).runOnUiThread {
-                        try {
-                            setupVideoView(holder, tempFile, media.name)
-                        } catch (e: Exception) {
-                            Log.e("SecureMediaPagerAdapter", "Failed to setup video view for ${media.name}", e)
-                            holder.loadingIndicator.visibility = View.GONE
+                    // Setup video view on main thread with safety checks
+                    val activity = activityRef.get()
+                    if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
+                        activity.runOnUiThread {
+                            try {
+                                // Double-check activity state in UI thread
+                                if (!activity.isFinishing && !activity.isDestroyed) {
+                                    setupVideoView(holder, tempFile, media.name)
+                                } else {
+                                    Log.w("SecureMediaPagerAdapter", "Activity finishing/destroyed, skipping video setup for ${media.name}")
+                                    holder.loadingIndicator.visibility = View.GONE
+                                }
+                            } catch (e: Exception) {
+                                Log.e("SecureMediaPagerAdapter", "Failed to setup video view for ${media.name}", e)
+                                holder.loadingIndicator.visibility = View.GONE
+                            }
                         }
+                    } else {
+                        Log.w("SecureMediaPagerAdapter", "Activity reference lost, skipping video setup for ${media.name}")
                     }
                     
                 } catch (e: Exception) {
                     Log.e("SecureMediaPagerAdapter", "Failed to decrypt/play video: ${media.name}", e)
-                    (context as android.app.Activity).runOnUiThread {
-                        holder.loadingIndicator.visibility = View.GONE
+                    val activity = activityRef.get()
+                    if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
+                        activity.runOnUiThread {
+                            holder.loadingIndicator.visibility = View.GONE
+                        }
                     }
                 }
             }.start()
