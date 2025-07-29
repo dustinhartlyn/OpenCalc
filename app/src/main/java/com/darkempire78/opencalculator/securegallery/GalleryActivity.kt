@@ -247,6 +247,40 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         GalleryManager.setContext(this)
         GalleryManager.saveGalleries()
         
+        // Create thumbnails for the new media and add to decryptedMedia list
+        val newMediaThumbnails = encryptedMedia.mapNotNull { mediaItem ->
+            when (mediaItem.mediaType) {
+                MediaType.PHOTO -> {
+                    try {
+                        val encryptedData = mediaItem.getEncryptedData()
+                        val iv = encryptedData.copyOfRange(0, 16)
+                        val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size)
+                        MediaThumbnail(bitmap, null, mediaItem.mediaType)
+                    } catch (e: Exception) {
+                        android.util.Log.e("SecureGallery", "Failed to create thumbnail for new photo: ${mediaItem.name}", e)
+                        null
+                    }
+                }
+                MediaType.VIDEO -> {
+                    try {
+                        // Use cached thumbnail if available, otherwise generate
+                        val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
+                        val thumbnail = cachedThumbnail ?: VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
+                        val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
+                        MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
+                    } catch (e: Exception) {
+                        android.util.Log.e("SecureGallery", "Failed to create thumbnail for new video: ${mediaItem.name}", e)
+                        null
+                    }
+                }
+            }
+        }
+        
+        // Add new thumbnails to the decryptedMedia list
+        decryptedMedia.addAll(newMediaThumbnails)
+        
         // Refresh the UI to show new media immediately
         photosAdapter?.notifyDataSetChanged()
         

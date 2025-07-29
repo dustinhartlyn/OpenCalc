@@ -29,7 +29,7 @@ class SecureMediaViewerActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_secure_photo_viewer) // Reuse existing layout
+        setContentView(R.layout.activity_secure_media_viewer) // Use media viewer layout
         
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
@@ -70,6 +70,13 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         
         // Setup ViewPager2 with media adapter
         val mediaViewPager = findViewById<ViewPager2>(R.id.mediaViewPager)
+        if (mediaViewPager == null) {
+            Log.e("SecureMediaViewer", "Failed to find mediaViewPager in layout")
+            Toast.makeText(this, "Layout error: ViewPager not found", Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+        
         adapter = SecureMediaPagerAdapter(this, media, galleryPin, gallerySalt)
         mediaViewPager.adapter = adapter
         mediaViewPager.setCurrentItem(currentPosition, false)

@@ -198,36 +198,72 @@ object VideoUtils {
      */
     fun generateVideoThumbnailFromData(encryptedVideoData: ByteArray, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
         var tempFile: File? = null
+        var retriever: MediaMetadataRetriever? = null
         try {
+            Log.d("VideoUtils", "Generating thumbnail from data, encrypted size: ${encryptedVideoData.size}")
+            
+            // Ensure we have enough data for IV + content
+            if (encryptedVideoData.size < 17) { // 16 bytes IV + at least 1 byte data
+                Log.e("VideoUtils", "Encrypted video data too small: ${encryptedVideoData.size} bytes")
+                return null
+            }
+            
             // Decrypt the video data
             val iv = encryptedVideoData.copyOfRange(0, 16)
             val ciphertext = encryptedVideoData.copyOfRange(16, encryptedVideoData.size)
             val decryptedData = CryptoUtils.decrypt(iv, ciphertext, key)
             
+            Log.d("VideoUtils", "Decrypted video data size: ${decryptedData.size}")
+            
             // Create a temporary file to store the decrypted video
-            tempFile = File.createTempFile("temp_video", ".mp4")
+            tempFile = File.createTempFile("temp_video_thumb_", ".mp4")
             tempFile.deleteOnExit()
             
             val fos = FileOutputStream(tempFile)
             fos.write(decryptedData)
             fos.close()
             
+            Log.d("VideoUtils", "Temporary video file created: ${tempFile.absolutePath}")
+            
             // Use MediaMetadataRetriever to get thumbnail
-            val retriever = MediaMetadataRetriever()
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(tempFile.absolutePath)
             
-            // Get thumbnail at 1 second (1000000 microseconds)
-            val bitmap = retriever.getFrameAtTime(1000000, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            retriever.release()
+            // Try multiple time positions if the first one fails
+            val timePositions = longArrayOf(1000000, 0, 500000, 2000000) // 1s, 0s, 0.5s, 2s
             
-            return bitmap
+            for (timeUs in timePositions) {
+                try {
+                    val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (bitmap != null) {
+                        Log.d("VideoUtils", "Successfully generated thumbnail at time ${timeUs}us")
+                        return bitmap
+                    }
+                } catch (e: Exception) {
+                    Log.w("VideoUtils", "Failed to get frame at time ${timeUs}us", e)
+                }
+            }
+            
+            Log.e("VideoUtils", "Failed to generate thumbnail at all time positions")
+            return null
             
         } catch (e: Exception) {
-            Log.e("VideoUtils", "Failed to generate video thumbnail", e)
+            Log.e("VideoUtils", "Failed to generate video thumbnail from data", e)
             return null
         } finally {
+            // Clean up
+            try {
+                retriever?.release()
+            } catch (e: Exception) {
+                Log.w("VideoUtils", "Error releasing MediaMetadataRetriever", e)
+            }
+            
             // Clean up temporary file
-            tempFile?.delete()
+            try {
+                tempFile?.delete()
+            } catch (e: Exception) {
+                Log.w("VideoUtils", "Error deleting temp file", e)
+            }
         }
     }
     
@@ -281,127 +317,91 @@ object VideoUtils {
     
     /**
      * Generate thumbnail from encrypted video file (file-based storage)
-     * Optimized to only decrypt the minimum amount needed for thumbnail
      */
     private fun generateVideoThumbnailFromFile(encryptedFilePath: String, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
         var tempFile: File? = null
+        var retriever: MediaMetadataRetriever? = null
         try {
-            // Create temporary file for partially decrypted video
-            tempFile = File.createTempFile("temp_video_thumb", ".mp4")
-            tempFile.deleteOnExit()
+            Log.d("VideoUtils", "Generating thumbnail from file: $encryptedFilePath")
             
             val encryptedFile = File(encryptedFilePath)
+            if (!encryptedFile.exists()) {
+                Log.e("VideoUtils", "Encrypted file does not exist: $encryptedFilePath")
+                return null
+            }
+            
+            Log.d("VideoUtils", "Encrypted file size: ${encryptedFile.length()} bytes")
+            
+            // Create temporary file for decrypted video
+            tempFile = File.createTempFile("temp_video_file_", ".mp4")
+            tempFile.deleteOnExit()
+            
             val inputStream = FileInputStream(encryptedFile)
             val outputStream = FileOutputStream(tempFile)
             
             // Read IV from file
             val iv = ByteArray(16)
-            inputStream.read(iv)
+            val ivBytesRead = inputStream.read(iv)
+            if (ivBytesRead != 16) {
+                Log.e("VideoUtils", "Failed to read complete IV from file")
+                return null
+            }
             
-            // Decrypt using proper streaming approach
+            // Decrypt the rest of the file
             val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
-            // Use CipherInputStream for proper streaming decryption
             val cipherInputStream = javax.crypto.CipherInputStream(inputStream, cipher)
-            
-            // Only decrypt first 2MB for thumbnail generation (should be enough for headers + first frames)
-            val maxBytesForThumbnail = 2 * 1024 * 1024 // 2MB
             val buffer = ByteArray(8192)
-            var totalBytesRead = 0
+            var bytesRead: Int
             
-            while (totalBytesRead < maxBytesForThumbnail) {
-                val bytesRead = cipherInputStream.read(buffer)
-                if (bytesRead == -1) break
-                
-                val bytesToWrite = minOf(bytesRead, maxBytesForThumbnail - totalBytesRead)
-                outputStream.write(buffer, 0, bytesToWrite)
-                totalBytesRead += bytesToWrite
-                
-                if (totalBytesRead >= maxBytesForThumbnail) break
+            while (cipherInputStream.read(buffer).also { bytesRead = it } != -1) {
+                outputStream.write(buffer, 0, bytesRead)
             }
             
             cipherInputStream.close()
             inputStream.close()
             outputStream.close()
             
-            // Generate thumbnail from partially decrypted temp file
-            val retriever = MediaMetadataRetriever()
-            try {
-                retriever.setDataSource(tempFile.absolutePath)
-                val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-                retriever.release()
-                return bitmap
-            } catch (e: Exception) {
-                // If partial file doesn't work, try with a bit more data
-                retriever.release()
-                return generateThumbnailWithMoreData(encryptedFilePath, key)
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("VideoUtils", "Failed to generate thumbnail from file", e)
-            return null
-        } finally {
-            tempFile?.delete()
-        }
-    }
-    
-    /**
-     * Fallback method to generate thumbnail with more data if initial attempt fails
-     */
-    private fun generateThumbnailWithMoreData(encryptedFilePath: String, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
-        var tempFile: File? = null
-        try {
-            // Create temporary file for more decrypted video data
-            tempFile = File.createTempFile("temp_video_full", ".mp4")
-            tempFile.deleteOnExit()
+            Log.d("VideoUtils", "Decrypted video file created: ${tempFile.absolutePath}, size: ${tempFile.length()}")
             
-            val encryptedFile = File(encryptedFilePath)
-            val inputStream = FileInputStream(encryptedFile)
-            val outputStream = FileOutputStream(tempFile)
-            
-            // Read IV from file
-            val iv = ByteArray(16)
-            inputStream.read(iv)
-            
-            // Decrypt using proper streaming approach
-            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
-            
-            // Use CipherInputStream for proper streaming decryption
-            val cipherInputStream = javax.crypto.CipherInputStream(inputStream, cipher)
-            
-            // Decrypt up to 10MB for thumbnail (larger fallback)
-            val maxBytesForThumbnail = 10 * 1024 * 1024 // 10MB
-            val buffer = ByteArray(8192)
-            var totalBytesRead = 0
-            
-            while (totalBytesRead < maxBytesForThumbnail) {
-                val bytesRead = cipherInputStream.read(buffer)
-                if (bytesRead == -1) break
-                
-                val bytesToWrite = minOf(bytesRead, maxBytesForThumbnail - totalBytesRead)
-                outputStream.write(buffer, 0, bytesToWrite)
-                totalBytesRead += bytesToWrite
-                
-                if (totalBytesRead >= maxBytesForThumbnail) break
-            }
-            
-            cipherInputStream.close()
-            inputStream.close()
-            outputStream.close()
-            
-            // Generate thumbnail from larger partially decrypted temp file
-            val retriever = MediaMetadataRetriever()
+            // Generate thumbnail from decrypted temp file
+            retriever = MediaMetadataRetriever()
             retriever.setDataSource(tempFile.absolutePath)
-            val bitmap = retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            retriever.release()
             
-            return bitmap
+            // Try multiple time positions if the first one fails
+            val timePositions = longArrayOf(0, 1000000, 500000, 2000000) // 0s, 1s, 0.5s, 2s
+            
+            for (timeUs in timePositions) {
+                try {
+                    val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                    if (bitmap != null) {
+                        Log.d("VideoUtils", "Successfully generated thumbnail from file at time ${timeUs}us")
+                        return bitmap
+                    }
+                } catch (e: Exception) {
+                    Log.w("VideoUtils", "Failed to get frame at time ${timeUs}us from file", e)
+                }
+            }
+            
+            Log.e("VideoUtils", "Failed to generate thumbnail from file at all time positions")
+            return null
+            
         } catch (e: Exception) {
-            android.util.Log.e("VideoUtils", "Failed to generate thumbnail with more data", e)
+            Log.e("VideoUtils", "Failed to generate thumbnail from file", e)
             return null
         } finally {
-            tempFile?.delete()
+            try {
+                retriever?.release()
+            } catch (e: Exception) {
+                Log.w("VideoUtils", "Error releasing MediaMetadataRetriever", e)
+            }
+            
+            try {
+                tempFile?.delete()
+            } catch (e: Exception) {
+                Log.w("VideoUtils", "Error deleting temp file", e)
+            }
         }
     }
     
