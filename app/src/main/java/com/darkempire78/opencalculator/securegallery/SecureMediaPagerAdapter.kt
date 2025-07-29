@@ -68,6 +68,66 @@ class SecureMediaPagerAdapter(
         }
     }
     
+    private var currentVideoHolder: VideoViewHolder? = null
+    
+    fun pauseAllVideos() {
+        currentVideoHolder?.let { holder ->
+            try {
+                holder.mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) {
+                        mp.pause()
+                        Log.d("SecureMediaPagerAdapter", "Paused video due to focus loss")
+                    }
+                }
+                // Also pause VideoView if it's being used
+                if (holder.videoView.isPlaying) {
+                    holder.videoView.pause()
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error pausing video", e)
+            }
+        }
+    }
+    
+    fun resumeCurrentVideo() {
+        currentVideoHolder?.let { holder ->
+            try {
+                holder.mediaPlayer?.let { mp ->
+                    if (!mp.isPlaying) {
+                        mp.start()
+                        Log.d("SecureMediaPagerAdapter", "Resumed video after focus gain")
+                    }
+                }
+                // Also resume VideoView if it's being used
+                if (!holder.videoView.isPlaying && holder.videoView.canPause()) {
+                    holder.videoView.start()
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error resuming video", e)
+            }
+        }
+    }
+    
+    fun setCurrentVideoHolder(holder: VideoViewHolder?) {
+        // Pause previous video when switching
+        currentVideoHolder?.let { prevHolder ->
+            try {
+                prevHolder.mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) {
+                        mp.pause()
+                        Log.d("SecureMediaPagerAdapter", "Paused previous video on scroll")
+                    }
+                }
+                if (prevHolder.videoView.isPlaying) {
+                    prevHolder.videoView.pause()
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error pausing previous video", e)
+            }
+        }
+        currentVideoHolder = holder
+    }
+    
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val media = mediaList[position]
         when (holder) {
@@ -130,6 +190,9 @@ class SecureMediaPagerAdapter(
     
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
         Log.d("SecureMediaPagerAdapter", "Loading video: ${media.name}")
+        
+        // Set this as the current video holder
+        setCurrentVideoHolder(holder)
         
         if (key != null) {
             // Show loading indicator

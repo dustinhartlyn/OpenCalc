@@ -94,6 +94,18 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         setResult(Activity.RESULT_OK, Intent().putExtra("return_position", currentPosition))
     }
     
+    override fun onPause() {
+        super.onPause()
+        // Pause all videos when activity loses focus
+        adapter.pauseAllVideos()
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        // Resume current video when activity gains focus
+        adapter.resumeCurrentVideo()
+    }
+    
     override fun onDestroy() {
         super.onDestroy()
         // Clean up any temporary files created by video playback
