@@ -259,6 +259,59 @@ object VideoUtils {
         }
     }
     
+    /**
+     * Generate video thumbnail from already decrypted video bytes (for thumbnail generation)
+     */
+    fun generateVideoThumbnailFromDecryptedBytes(decryptedVideoData: ByteArray): android.graphics.Bitmap? {
+        var tempFile: File? = null
+        var retriever: MediaMetadataRetriever? = null
+        try {
+            // Create a temporary file for the video
+            tempFile = File.createTempFile("temp_video", ".mp4")
+            tempFile.deleteOnExit()
+            
+            // Write decrypted data to temp file
+            tempFile.writeBytes(decryptedVideoData)
+            
+            Log.d("VideoUtils", "Temporary video file created, size: ${tempFile.length()}")
+            
+            // Use MediaMetadataRetriever to get thumbnail
+            retriever = MediaMetadataRetriever()
+            retriever.setDataSource(tempFile.absolutePath)
+            
+            // Get frame at 1 second or 10% of duration, whichever is smaller
+            val durationStr = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+            val duration = durationStr?.toLongOrNull() ?: 0L
+            val timeUs = if (duration > 0) minOf(1000000L, duration * 100L) else 1000000L // 1 second or 10% of duration
+            
+            val bitmap = retriever.getFrameAtTime(timeUs, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+            Log.d("VideoUtils", "Video thumbnail generated successfully")
+            return bitmap
+            
+        } catch (e: Exception) {
+            Log.e("VideoUtils", "Failed to generate video thumbnail from decrypted bytes", e)
+            return null
+        } finally {
+            try {
+                retriever?.release()
+            } catch (e: Exception) {
+                Log.e("VideoUtils", "Error releasing MediaMetadataRetriever", e)
+            }
+            
+            // Clean up temporary file
+            tempFile?.let { file ->
+                try {
+                    if (file.exists()) {
+                        file.delete()
+                        Log.d("VideoUtils", "Temporary video file deleted")
+                    }
+                } catch (e: Exception) {
+                    Log.e("VideoUtils", "Error deleting temporary file", e)
+                }
+            }
+        }
+    }
+
     private fun generateVideoThumbnailFromDecryptedBytes(encryptedVideoData: ByteArray, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
         var tempFile: File? = null
         var retriever: MediaMetadataRetriever? = null

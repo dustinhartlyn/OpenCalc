@@ -71,8 +71,8 @@ object ThumbnailGenerator {
         key: SecretKeySpec
     ): String? {
         return try {
-            // Use VideoUtils to generate thumbnail from video bytes
-            val thumbnail = VideoUtils.generateVideoThumbnailFromBytes(videoBytes, key)
+            // Use VideoUtils to generate thumbnail from decrypted video bytes
+            val thumbnail = VideoUtils.generateVideoThumbnailFromDecryptedBytes(videoBytes)
                 ?: return null
             
             // Convert thumbnail to JPEG bytes

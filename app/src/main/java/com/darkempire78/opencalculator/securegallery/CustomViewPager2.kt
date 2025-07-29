@@ -92,12 +92,12 @@ class CustomViewPager2 @JvmOverloads constructor(
                 initialX = ev.x
                 initialY = ev.y
                 Log.d("CustomViewPager2", "ACTION_DOWN at (${ev.x}, ${ev.y}) - NOT intercepting")
-                // Track gestures but don't intercept yet
+                // Always pass touch events to gesture detector
                 gestureDetector.onTouchEvent(ev)
                 return false
             }
             MotionEvent.ACTION_MOVE -> {
-                // Track potential swipe gestures
+                // Always track gestures
                 gestureDetector.onTouchEvent(ev)
                 
                 val currentPhotoView = getCurrentPhotoView()
@@ -105,14 +105,19 @@ class CustomViewPager2 @JvmOverloads constructor(
                     val deltaY = ev.y - initialY
                     val deltaX = ev.x - initialX
                     
-                    // Only intercept if this looks like a strong downward swipe
-                    if (deltaY > 100 && abs(deltaY) > abs(deltaX) * 2) {
-                        Log.d("CustomViewPager2", "Intercepting for potential swipe-down dismiss")
+                    // Be more aggressive about intercepting downward swipes
+                    if (deltaY > 50 && abs(deltaY) > abs(deltaX) * 1.5) {
+                        Log.d("CustomViewPager2", "Intercepting for potential swipe-down dismiss (deltaY=$deltaY, deltaX=$deltaX)")
                         return true
                     }
                 }
                 
                 Log.d("CustomViewPager2", "ACTION_MOVE - NOT intercepting")
+                return false
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                // Always let gesture detector see the end of gestures
+                gestureDetector.onTouchEvent(ev)
                 return false
             }
         }
@@ -122,9 +127,10 @@ class CustomViewPager2 @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        // If we intercepted the event, let our gesture detector handle it
+        // Always give gesture detector a chance to handle events
         val gestureHandled = gestureDetector.onTouchEvent(event)
         if (gestureHandled) {
+            Log.d("CustomViewPager2", "Gesture detector handled the event")
             return true
         }
         // Otherwise let ViewPager2 handle it
