@@ -33,6 +33,11 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
 import android.os.Looper
+import java.util.concurrent.Executors
+import android.view.MenuItem
+import android.view.Menu
+import androidx.activity.result.ActivityResultLauncher
+import androidx.appcompat.app.AlertDialog
 
 class GalleryActivity : AppCompatActivity(), SensorEventListener {
     companion object {
@@ -472,8 +477,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 // Much shorter delay since thumbnails are pre-generated
                 Thread.sleep(20) // Reduced from 500ms
             }
-        }
-    }
         }
     }
 
