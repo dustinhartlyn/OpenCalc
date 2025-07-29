@@ -63,8 +63,9 @@ class SecureMediaPagerAdapter(
     
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         super.onViewRecycled(holder)
-        if (holder is VideoViewHolder) {
-            holder.cleanup()
+        when (holder) {
+            is VideoViewHolder -> holder.cleanup()
+            is PhotoViewHolder -> holder.cleanup()
         }
     }
     
@@ -154,7 +155,7 @@ class SecureMediaPagerAdapter(
                 
                 if (bitmap != null) {
                     Log.d("SecureMediaPagerAdapter", "Successfully loaded bitmap for photo: ${media.name}, size: ${bitmap.width}x${bitmap.height}")
-                    holder.photoView.setImageBitmap(bitmap)
+                    holder.setImageBitmap(bitmap)
                 } else {
                     Log.e("SecureMediaPagerAdapter", "Failed to decode bitmap for photo: ${media.name}")
                     holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -173,7 +174,7 @@ class SecureMediaPagerAdapter(
                     
                     if (bitmap != null) {
                         Log.d("SecureMediaPagerAdapter", "Legacy decryption succeeded for photo: ${media.name}")
-                        holder.photoView.setImageBitmap(bitmap)
+                        holder.setImageBitmap(bitmap)
                     } else {
                         holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
                     }
@@ -196,7 +197,7 @@ class SecureMediaPagerAdapter(
         
         if (key != null) {
             // Show loading indicator
-            holder.loadingIndicator.visibility = View.VISIBLE
+            holder.loadingContainer.visibility = View.VISIBLE
             holder.videoView.visibility = View.GONE
             
             // Decrypt and prepare video in background thread
@@ -301,21 +302,21 @@ class SecureMediaPagerAdapter(
                                                 Log.d("SecureMediaPagerAdapter", "Video view setup initiated for ${media.name}")
                                             } else {
                                                 Log.w("SecureMediaPagerAdapter", "Activity destroyed during delay, skipping video setup for ${media.name}")
-                                                holder.loadingIndicator.visibility = View.GONE
+                                                holder.loadingContainer.visibility = View.GONE
                                             }
                                         } catch (e: Exception) {
                                             Log.e("SecureMediaPagerAdapter", "Failed to setup video view (delayed) for ${media.name}", e)
-                                            holder.loadingIndicator.visibility = View.GONE
+                                            holder.loadingContainer.visibility = View.GONE
                                         }
                                     }, 100) // 100ms delay
                                     
                                 } else {
                                     Log.w("SecureMediaPagerAdapter", "Activity finishing/destroyed, skipping video setup for ${media.name}")
-                                    holder.loadingIndicator.visibility = View.GONE
+                                    holder.loadingContainer.visibility = View.GONE
                                 }
                             } catch (e: Exception) {
                                 Log.e("SecureMediaPagerAdapter", "Failed to setup video view for ${media.name}", e)
-                                holder.loadingIndicator.visibility = View.GONE
+                                holder.loadingContainer.visibility = View.GONE
                             }
                         }
                     } else {
@@ -327,14 +328,14 @@ class SecureMediaPagerAdapter(
                     val activity = activityRef.get()
                     if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
                         activity.runOnUiThread {
-                            holder.loadingIndicator.visibility = View.GONE
+                            holder.loadingContainer.visibility = View.GONE
                         }
                     }
                 }
             }.start()
         } else {
             Log.w("SecureMediaPagerAdapter", "No decryption key available for video: ${media.name}")
-            holder.loadingIndicator.visibility = View.GONE
+            holder.loadingContainer.visibility = View.GONE
         }
     }
     
@@ -358,7 +359,7 @@ class SecureMediaPagerAdapter(
             } catch (e: Exception) {
                 Log.e("SecureMediaPagerAdapter", "Failed to read video metadata for $videoName", e)
                 retriever.release()
-                holder.loadingIndicator.visibility = View.GONE
+                holder.loadingContainer.visibility = View.GONE
                 return
             }
             
@@ -375,7 +376,7 @@ class SecureMediaPagerAdapter(
                 
                 try {
                     // Hide loading indicator and show video
-                    holder.loadingIndicator.visibility = View.GONE
+                    holder.loadingContainer.visibility = View.GONE
                     holder.videoView.visibility = View.VISIBLE
                     
                     // Set video to loop
@@ -406,7 +407,7 @@ class SecureMediaPagerAdapter(
             
             holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
                 Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
-                holder.loadingIndicator.visibility = View.GONE
+                holder.loadingContainer.visibility = View.GONE
                 
                 // Try to provide more specific error information
                 val errorMsg = when (what) {
@@ -442,7 +443,7 @@ class SecureMediaPagerAdapter(
             
             // Add a timeout to detect if VideoView never calls onPrepared
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (holder.loadingIndicator.visibility == View.VISIBLE) {
+                if (holder.loadingContainer.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
                     Log.w("SecureMediaPagerAdapter", "Switching to MediaPlayer with SurfaceView...")
                     
@@ -483,13 +484,13 @@ class SecureMediaPagerAdapter(
                                         
                                         setOnPreparedListener { mp ->
                                             Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
-                                            holder.loadingIndicator.visibility = View.GONE
+                                            holder.loadingContainer.visibility = View.GONE
                                             mp.start()
                                         }
                                         
                                         setOnErrorListener { mp, what, extra ->
                                             Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
-                                            holder.loadingIndicator.visibility = View.GONE
+                                            holder.loadingContainer.visibility = View.GONE
                                             mp.release()
                                             holder.mediaPlayer = null
                                             true
@@ -503,7 +504,7 @@ class SecureMediaPagerAdapter(
                                     }
                                 } catch (e: Exception) {
                                     Log.e("SecureMediaPagerAdapter", "Failed to create MediaPlayer for $videoName", e)
-                                    holder.loadingIndicator.visibility = View.GONE
+                                    holder.loadingContainer.visibility = View.GONE
                                 }
                             }
                             
@@ -513,19 +514,31 @@ class SecureMediaPagerAdapter(
                             
                             override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
                                 Log.d("SecureMediaPagerAdapter", "Surface destroyed for $videoName")
+                                // Clean up MediaPlayer when surface is destroyed
+                                mediaPlayer?.let { mp ->
+                                    try {
+                                        if (mp.isPlaying) {
+                                            mp.stop()
+                                        }
+                                        mp.release()
+                                    } catch (e: Exception) {
+                                        Log.w("SecureMediaPagerAdapter", "Error releasing MediaPlayer on surface destroy", e)
+                                    }
+                                    mediaPlayer = null
+                                }
                             }
                         })
                         
                     } catch (e: Exception) {
                         Log.e("SecureMediaPagerAdapter", "Failed MediaPlayer approach for $videoName", e)
-                        holder.loadingIndicator.visibility = View.GONE
+                        holder.loadingContainer.visibility = View.GONE
                     }
                 }
             }, 3000) // 3 second timeout
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
-            holder.loadingIndicator.visibility = View.GONE
+            holder.loadingContainer.visibility = View.GONE
         }
     }
     
@@ -543,6 +556,7 @@ class SecureMediaPagerAdapter(
     
     class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val photoView: PhotoView = itemView.findViewById(R.id.photoView)
+        private var currentBitmap: Bitmap? = null
         
         init {
             // Configure PhotoView for zoom functionality
@@ -563,11 +577,33 @@ class SecureMediaPagerAdapter(
                 }
             }
         }
+        
+        fun setImageBitmap(bitmap: Bitmap?) {
+            // Recycle previous bitmap to free memory
+            currentBitmap?.let { oldBitmap ->
+                if (!oldBitmap.isRecycled) {
+                    oldBitmap.recycle()
+                }
+            }
+            currentBitmap = bitmap
+            photoView.setImageBitmap(bitmap)
+        }
+        
+        fun cleanup() {
+            currentBitmap?.let { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
+            }
+            currentBitmap = null
+            photoView.setImageBitmap(null)
+        }
     }
     
     class VideoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         val videoView: VideoView = itemView.findViewById(R.id.videoView)
         val surfaceView: SurfaceView = itemView.findViewById(R.id.surfaceView)
+        val loadingContainer: View = itemView.findViewById(R.id.loadingContainer)
         val loadingIndicator: ProgressBar = itemView.findViewById(R.id.loadingIndicator)
         var mediaPlayer: MediaPlayer? = null
         

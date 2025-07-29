@@ -19,11 +19,31 @@
         android:visibility="gone" />
 
     <!-- Loading indicator -->
-    <ProgressBar
-        android:id="@+id/loadingIndicator"
+    <LinearLayout
+        android:id="@+id/loadingContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center"
-        android:visibility="visible" />
+        android:orientation="vertical"
+        android:gravity="center"
+        android:visibility="visible">
+        
+        <ProgressBar
+            android:id="@+id/loadingIndicator"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+            
+        <TextView
+            android:id="@+id/loadingText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="Loading..."
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:gravity="center" />
+            
+    </LinearLayout>
 
 </FrameLayout>
