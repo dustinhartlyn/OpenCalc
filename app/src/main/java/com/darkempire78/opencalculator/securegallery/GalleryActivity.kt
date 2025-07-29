@@ -771,25 +771,6 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // SensorEventListener implementation for accelerometer
     override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            
-            // Check if phone is face down (Z-axis negative with significant magnitude)
-            // Threshold of -8.0 for face down detection (gravity is ~9.8, allowing for some tolerance)
-            // ALSO apply startup grace period to prevent false triggers during activity startup
-            val timeSinceStart = System.currentTimeMillis() - activityStartTime
-            if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0 && timeSinceStart > 2000) {
-                android.util.Log.d("SecureGallery", "Face down detected after grace period (${timeSinceStart}ms), triggering security")
-                closeGalleryForSecurity()
-            } else if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
-                android.util.Log.d("SecureGallery", "Face down detected during grace period (${timeSinceStart}ms), ignoring")
-            }
-        }
-    }
-    
-    override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER && isActivityVisible) {
             val currentTime = System.currentTimeMillis()
             // Grace period after activity start to prevent false triggers during app launch
@@ -797,12 +778,25 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 val x = event.values[0]
                 val y = event.values[1]
                 val z = event.values[2]
-                val acceleration = kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
                 
-                // Detect significant device movement (shake)
+                // Check for face down detection (Z-axis negative with significant magnitude)
+                if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
+                    android.util.Log.d("SecureGallery", "Security trigger: Face down detected")
+                    closeGalleryForSecurity()
+                }
+                
+                // Check for shake detection (significant acceleration)
+                val acceleration = kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
                 if (acceleration > 15.0 && !isScreenOff) { // Only trigger if screen is not off
                     android.util.Log.d("SecureGallery", "Security trigger: Device shake detected")
                     closeGalleryForSecurity()
+                }
+            } else if (currentTime - activityStartTime <= 3000) {
+                val x = event.values[0]
+                val y = event.values[1]
+                val z = event.values[2]
+                if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
+                    android.util.Log.d("SecureGallery", "Face down detected during grace period (${currentTime - activityStartTime}ms), ignoring")
                 }
             }
         }
@@ -952,7 +946,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
                 
                 // Trigger preloading for smooth scrolling
-                if (!isOrganizeMode && !isDeleteMode) {
+                if (!isOrganizeMode && !isDeleteMode && gallery != null) {
                     preloadThumbnails(position, gallery, key)
                 }
                 
