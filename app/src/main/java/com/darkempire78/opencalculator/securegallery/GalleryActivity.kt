@@ -38,6 +38,7 @@ import android.view.MenuItem
 import android.view.Menu
 import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AlertDialog
+import android.net.Uri
 
 class GalleryActivity : AppCompatActivity(), SensorEventListener {
     companion object {
