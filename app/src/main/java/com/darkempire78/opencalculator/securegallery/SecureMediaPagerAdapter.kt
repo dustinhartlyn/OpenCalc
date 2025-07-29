@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.darkempire78.opencalculator.R
 import com.github.chrisbanes.photoview.PhotoView
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 
 class SecureMediaPagerAdapter(
@@ -144,7 +145,7 @@ class SecureMediaPagerAdapter(
                     
                     val buffer = ByteArray(8192)
                     var bytesRead: Int
-                    while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    while (inputStream.read(buffer).also { bytesRead: Int -> bytesRead = it } != -1) {
                         val decrypted = cipher.update(buffer, 0, bytesRead)
                         if (decrypted != null) {
                             outputStream.write(decrypted)
