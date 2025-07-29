@@ -449,36 +449,44 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Load remaining thumbnails asynchronously with optimized timing for pre-generated thumbnails
     private fun loadRemainingThumbnails(remainingMedia: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec, startIndex: Int) {
-        val loadedThumbnails = mutableListOf<MediaThumbnail>()
-        
-        remainingMedia.forEachIndexed { index, mediaItem ->
-            // Check if we should pause due to user interaction (but with shorter pause)
-            while (shouldPauseThumbnailLoading()) {
-                Thread.sleep(50) // Reduced from 200ms
-                android.util.Log.d("SecureGallery", "Pausing thumbnail loading due to user interaction")
-            }
+        Thread {
+            val loadedThumbnails = mutableListOf<MediaThumbnail>()
+            val batchSize = 5 // Process in batches
             
-            val thumbnail = loadThumbnailOptimized(mediaItem, key, startIndex + index)
-            if (thumbnail != null) {
-                loadedThumbnails.add(thumbnail)
-                
-                // Update UI in batches for better performance
-                val currentBatch = loadedThumbnails.toList()
-                
-                runOnUiThread {
-                    val startPosition = decryptedMedia.size
-                    decryptedMedia.addAll(currentBatch)
-                    photosAdapter?.notifyItemRangeInserted(startPosition, currentBatch.size)
-                    
-                    android.util.Log.d("SecureGallery", "Remaining thumbnails progress: ${decryptedMedia.size}/${startIndex + remainingMedia.size}")
+            remainingMedia.forEachIndexed { index, mediaItem ->
+                // Check if we should pause due to user interaction (but with shorter pause)
+                while (shouldPauseThumbnailLoading()) {
+                    Thread.sleep(50)
+                    android.util.Log.d("SecureGallery", "Pausing thumbnail loading due to user interaction")
                 }
                 
-                loadedThumbnails.clear()
+                val thumbnail = loadThumbnailOptimized(mediaItem, key, startIndex + index)
+                if (thumbnail != null) {
+                    loadedThumbnails.add(thumbnail)
+                    android.util.Log.d("SecureGallery", "Loaded thumbnail ${loadedThumbnails.size}/${remainingMedia.size}")
+                }
                 
-                // Much shorter delay since thumbnails are pre-generated
-                Thread.sleep(20) // Reduced from 500ms
+                // Update UI in batches or when we reach the end
+                if (loadedThumbnails.size >= batchSize || index == remainingMedia.size - 1) {
+                    val currentBatch = loadedThumbnails.toList()
+                    
+                    runOnUiThread {
+                        val startPosition = decryptedMedia.size
+                        decryptedMedia.addAll(currentBatch)
+                        photosAdapter?.notifyItemRangeInserted(startPosition, currentBatch.size)
+                        
+                        android.util.Log.d("SecureGallery", "Added batch: ${decryptedMedia.size}/${startIndex + remainingMedia.size} total thumbnails")
+                    }
+                    
+                    loadedThumbnails.clear()
+                    
+                    // Short delay between batches
+                    Thread.sleep(20)
+                }
             }
-        }
+            
+            android.util.Log.d("SecureGallery", "All remaining thumbnails loaded: ${decryptedMedia.size} total")
+        }.start()
     }
 
     private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
@@ -511,6 +519,29 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
             }
+        }.start()
+    }
+    
+    // Load missing thumbnails within the existing range (for gaps)
+    private fun loadMissingThumbnailsInRange(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+        Thread {
+            android.util.Log.d("SecureGallery", "Loading missing thumbnails in range: ${media.size} media items")
+            
+            media.forEachIndexed { index, mediaItem ->
+                if (index < decryptedMedia.size && decryptedMedia[index] == null) {
+                    android.util.Log.d("SecureGallery", "Loading missing thumbnail at position $index")
+                    val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
+                    if (thumbnail != null) {
+                        runOnUiThread {
+                            decryptedMedia[index] = thumbnail
+                            photosAdapter?.notifyItemChanged(index)
+                            android.util.Log.d("SecureGallery", "Updated missing thumbnail at position $index")
+                        }
+                    }
+                }
+            }
+            
+            android.util.Log.d("SecureGallery", "Finished loading missing thumbnails")
         }.start()
     }
     
@@ -923,33 +954,40 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
         // Check if media count has changed and we need a refresh
-        val hasNewMedia = gallery.media.size > decryptedMedia.size
-        val hasMissingThumbnails = gallery.media.size > decryptedMedia.count { it != null }
+        val actualMediaCount = gallery.media.size
+        val currentThumbnailCount = decryptedMedia.count { it != null }
+        val hasNewMedia = actualMediaCount > currentThumbnailCount
+        val hasMissingThumbnails = actualMediaCount > 0 && currentThumbnailCount < actualMediaCount
+        
+        android.util.Log.d("SecureGallery", "Gallery refresh check - Total media: $actualMediaCount, Current thumbnails: $currentThumbnailCount, decryptedMedia.size: ${decryptedMedia.size}")
         
         if (hasNewMedia || hasMissingThumbnails) {
-            android.util.Log.d("SecureGallery", "Gallery changed - Media: ${gallery.media.size}, Thumbnails: ${decryptedMedia.size}, Missing: ${hasMissingThumbnails}")
+            android.util.Log.d("SecureGallery", "Gallery changed - Need refresh. New: $hasNewMedia, Missing: $hasMissingThumbnails")
             
-            // Only clear and reload if we have new media or significant changes
-            if (hasNewMedia) {
-                // Clear existing data for full refresh
-                decryptedMedia.clear()
+            // Only clear if we actually have new media beyond what we've processed
+            if (hasNewMedia && actualMediaCount > decryptedMedia.size) {
+                android.util.Log.d("SecureGallery", "Expanding thumbnail list from ${decryptedMedia.size} to $actualMediaCount")
+                // Expand the list to accommodate new media (don't clear existing)
+                while (decryptedMedia.size < actualMediaCount) {
+                    decryptedMedia.add(null)
+                }
                 photosAdapter?.notifyDataSetChanged()
                 
-                // Load thumbnails asynchronously to prevent ANR
-                if (key != null && gallery.media.isNotEmpty()) {
-                    loadInitialThumbnails(gallery.media, key)
+                // Load only the new thumbnails
+                val newMedia = gallery.media.drop(currentThumbnailCount)
+                if (key != null && newMedia.isNotEmpty()) {
+                    loadThumbnailsAsync(newMedia, key)
                 }
             } else if (hasMissingThumbnails) {
-                // Just load missing thumbnails without clearing
-                val missingMedia = gallery.media.drop(decryptedMedia.size)
-                if (key != null && missingMedia.isNotEmpty()) {
-                    loadThumbnailsAsync(missingMedia, key)
+                // Load missing thumbnails within existing range
+                if (key != null && gallery.media.isNotEmpty()) {
+                    loadMissingThumbnailsInRange(gallery.media, key)
                 }
             }
             
             android.util.Log.d("SecureGallery", "Gallery refresh completed")
         } else {
-            android.util.Log.d("SecureGallery", "No gallery refresh needed - Media: ${gallery.media.size}, Thumbnails: ${decryptedMedia.size}")
+            android.util.Log.d("SecureGallery", "No gallery refresh needed - Media: $actualMediaCount, Thumbnails: $currentThumbnailCount")
         }
     }
     

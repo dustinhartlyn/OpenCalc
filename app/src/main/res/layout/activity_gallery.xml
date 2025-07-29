@@ -57,11 +57,13 @@
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/photosRecyclerView"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="0dp"
+            android:layout_weight="1"
             android:background="#424242"
             android:padding="2dp"
             android:nestedScrollingEnabled="false"
-            android:minHeight="400dp" />
+            android:minHeight="400dp"
+            android:layout_marginBottom="8dp" />
 
         <LinearLayout
             android:layout_width="match_parent"

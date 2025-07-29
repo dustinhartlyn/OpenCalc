@@ -155,7 +155,14 @@ class SecureMediaPagerAdapter(
     }
     
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
+        if (position < 0 || position >= mediaList.size) {
+            Log.e("SecureMediaPagerAdapter", "Invalid position $position for mediaList size ${mediaList.size}")
+            return
+        }
+        
         val media = mediaList[position]
+        Log.d("SecureMediaPagerAdapter", "Binding media at position $position: ${media.name} (${media.mediaType})")
+        
         when (holder) {
             is PhotoViewHolder -> {
                 bindPhoto(holder, media)
@@ -310,6 +317,14 @@ class SecureMediaPagerAdapter(
         // Clear previous image to prevent displaying wrong content
         holder.cleanup()
         
+        // Validate media data before proceeding
+        val encryptedData = media.getEncryptedData()
+        if (encryptedData.isEmpty()) {
+            Log.e("SecureMediaPagerAdapter", "Empty encrypted data for photo: ${media.name}")
+            setErrorImage(holder)
+            return
+        }
+        
         // First check if we have a preloaded bitmap
         val cacheKey = media.name + "_" + media.id
         synchronized(photoPreloadCache) {
@@ -433,7 +448,31 @@ class SecureMediaPagerAdapter(
     }
     
     private fun setErrorImage(holder: PhotoViewHolder) {
-        holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+        Log.w("SecureMediaPagerAdapter", "Setting error image for photo holder")
+        activityRef.get()?.runOnUiThread {
+            try {
+                // Create a simple error bitmap if the system icon fails
+                val bitmap = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                canvas.drawColor(android.graphics.Color.DKGRAY)
+                
+                val paint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.WHITE
+                    textSize = 24f
+                    isAntiAlias = true
+                    textAlign = android.graphics.Paint.Align.CENTER
+                }
+                
+                canvas.drawText("Image", bitmap.width / 2f, bitmap.height / 2f - 10f, paint)
+                canvas.drawText("Load Error", bitmap.width / 2f, bitmap.height / 2f + 20f, paint)
+                
+                holder.setImageBitmap(bitmap)
+            } catch (e: Exception) {
+                Log.e("SecureMediaPagerAdapter", "Failed to create error image", e)
+                // Fallback to system icon
+                holder.photoView.setImageResource(android.R.drawable.ic_menu_gallery)
+            }
+        }
     }
     
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
