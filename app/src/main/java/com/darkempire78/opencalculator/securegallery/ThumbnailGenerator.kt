@@ -46,7 +46,8 @@ object ThumbnailGenerator {
             }
             
             // Encrypt thumbnail
-            val encryptedThumbnail = CryptoUtils.encrypt(thumbnailBytes, key)
+            val (iv, ciphertext) = CryptoUtils.encrypt(thumbnailBytes, key)
+            val encryptedThumbnail = iv + ciphertext // Combine IV and ciphertext
             
             // Save encrypted thumbnail to file
             val thumbnailFile = getThumbnailFile(context, galleryName, mediaId)
@@ -86,7 +87,8 @@ object ThumbnailGenerator {
             }
             
             // Encrypt thumbnail
-            val encryptedThumbnail = CryptoUtils.encrypt(thumbnailBytes, key)
+            val (iv, ciphertext) = CryptoUtils.encrypt(thumbnailBytes, key)
+            val encryptedThumbnail = iv + ciphertext // Combine IV and ciphertext
             
             // Save encrypted thumbnail to file
             val thumbnailFile = getThumbnailFile(context, galleryName, mediaId)
@@ -126,7 +128,8 @@ object ThumbnailGenerator {
             }
             
             // Encrypt thumbnail
-            val encryptedThumbnail = CryptoUtils.encrypt(thumbnailBytes, key)
+            val (iv, ciphertext) = CryptoUtils.encrypt(thumbnailBytes, key)
+            val encryptedThumbnail = iv + ciphertext // Combine IV and ciphertext
             
             // Save encrypted thumbnail to file
             val thumbnailFile = getThumbnailFile(context, galleryName, mediaId)

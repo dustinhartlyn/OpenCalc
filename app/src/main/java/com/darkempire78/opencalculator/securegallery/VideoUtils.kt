@@ -263,9 +263,19 @@ object VideoUtils {
         var tempFile: File? = null
         var retriever: MediaMetadataRetriever? = null
         try {
+            // Extract IV from the encrypted data
+            val iv = encryptedVideoData.copyOfRange(0, 16)
+            val ciphertext = encryptedVideoData.copyOfRange(16, encryptedVideoData.size)
+            
+            // Initialize cipher for decryption
+            val cipher = javax.crypto.Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key, javax.crypto.spec.IvParameterSpec(iv))
             
-            val inputStream = ByteArrayInputStream(encryptedVideoData, 16, encryptedVideoData.size - 16)
+            // Create a temporary file for the decrypted video
+            tempFile = File.createTempFile("temp_video", ".mp4")
+            tempFile.deleteOnExit()
+            
+            val inputStream = ByteArrayInputStream(ciphertext)
             val outputStream = FileOutputStream(tempFile)
             
             val buffer = ByteArray(8192)
@@ -285,7 +295,7 @@ object VideoUtils {
             inputStream.close()
             outputStream.close()
             
-            Log.d("VideoUtils", "Video decryption completed, file size: ${tempFile.length()}")
+            Log.d("VideoUtils", "Video decryption completed, file size: ${tempFile!!.length()}")
             
             // Use MediaMetadataRetriever to get thumbnail
             retriever = MediaMetadataRetriever()

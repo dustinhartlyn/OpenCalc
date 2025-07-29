@@ -32,6 +32,7 @@ import android.hardware.SensorManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.os.Looper
 
 class GalleryActivity : AppCompatActivity(), SensorEventListener {
     companion object {
@@ -309,7 +310,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val thumbnail = try {
             if (mediaItem.hasThumbnail()) {
                 // Load the pre-generated encrypted thumbnail
-                val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(mediaItem, key!!)
+                val galleryName = intent.getStringExtra("gallery_name") ?: ""
+                val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(galleryName, mediaItem.id, key!!)
                 val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                     VideoUtils.getVideoDuration(mediaItem, key)
                 } else null
@@ -538,17 +540,30 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         GalleryManager.saveGalleries()
         
         // Generate and save encrypted thumbnails for the new media during import
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
         encryptedMedia.forEach { mediaItem ->
             try {
                 when (mediaItem.mediaType) {
                     MediaType.PHOTO -> {
+                        // Decrypt the photo data first to generate thumbnail
+                        val encryptedData = mediaItem.getEncryptedData()
+                        val iv = encryptedData.copyOfRange(0, 16)
+                        val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                        
                         // Generate encrypted thumbnail for photo
-                        ThumbnailGenerator.generatePhotoThumbnail(mediaItem, key!!)
+                        ThumbnailGenerator.generatePhotoThumbnail(this, decryptedBytes, mediaItem.id, galleryName, key)
                         android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
                     }
                     MediaType.VIDEO -> {
+                        // For videos, we need the raw video bytes to generate thumbnail
+                        val encryptedData = mediaItem.getEncryptedData()
+                        val iv = encryptedData.copyOfRange(0, 16)
+                        val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                        
                         // Generate encrypted thumbnail for video
-                        ThumbnailGenerator.generateVideoThumbnail(mediaItem, key!!)
+                        ThumbnailGenerator.generateVideoThumbnail(this, decryptedBytes, mediaItem.id, galleryName, key)
                         android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
                     }
                 }
@@ -561,7 +576,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         val newMediaThumbnails = encryptedMedia.mapNotNull { mediaItem ->
             try {
                 if (mediaItem.hasThumbnail()) {
-                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(mediaItem, key!!)
+                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(galleryName, mediaItem.id, key!!)
                     val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                         VideoUtils.getVideoDuration(mediaItem, key!!)
                     } else null
