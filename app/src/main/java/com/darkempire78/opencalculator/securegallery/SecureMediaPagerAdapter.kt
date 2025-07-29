@@ -196,6 +196,23 @@ class SecureMediaPagerAdapter(
                     val usedMemory = totalMemory - freeMemory
                     Log.d("SecureMediaPagerAdapter", "Memory after decryption - Used: ${usedMemory / 1024 / 1024}MB, Free: ${freeMemory / 1024 / 1024}MB, Total: ${totalMemory / 1024 / 1024}MB")
                     
+                    // Copy the file to a more accessible location in the external files directory
+                    val publicVideoDir = File(context.getExternalFilesDir(null), "temp_videos")
+                    if (!publicVideoDir.exists()) {
+                        publicVideoDir.mkdirs()
+                    }
+                    
+                    val publicVideoFile = File(publicVideoDir, "playback_${System.currentTimeMillis()}.mp4")
+                    try {
+                        tempFile.copyTo(publicVideoFile, overwrite = true)
+                        Log.d("SecureMediaPagerAdapter", "Video copied to public location: ${publicVideoFile.absolutePath}")
+                        
+                        // Use the public file for playback
+                        tempFile = publicVideoFile
+                    } catch (e: Exception) {
+                        Log.w("SecureMediaPagerAdapter", "Failed to copy video to public location, using original", e)
+                    }
+                    
                     // Setup video view on main thread with safety checks
                     val activity = activityRef.get()
                     if (activity != null && !activity.isFinishing && !activity.isDestroyed) {
@@ -253,6 +270,9 @@ class SecureMediaPagerAdapter(
     private fun setupVideoView(holder: VideoViewHolder, tempFile: File, videoName: String) {
         try {
             Log.d("SecureMediaPagerAdapter", "Setting up video view for: $videoName, file exists: ${tempFile.exists()}, file size: ${tempFile.length()}")
+            
+            // Check file permissions
+            Log.d("SecureMediaPagerAdapter", "File permissions - readable: ${tempFile.canRead()}, path: ${tempFile.absolutePath}")
             
             // First, let's try to get video information to verify the file is valid
             val retriever = MediaMetadataRetriever()
@@ -338,18 +358,37 @@ class SecureMediaPagerAdapter(
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (holder.loadingIndicator.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
-                    Log.w("SecureMediaPagerAdapter", "Attempting to force video preparation...")
+                    Log.w("SecureMediaPagerAdapter", "Attempting alternative MediaPlayer approach...")
                     
-                    // Try to manually start the video preparation
+                    // Try alternative approach with MediaPlayer directly
                     try {
-                        holder.videoView.requestFocus()
-                        holder.videoView.start()
+                        val mediaPlayer = MediaPlayer()
+                        mediaPlayer.setDataSource(tempFile.absolutePath)
+                        mediaPlayer.setDisplay(holder.videoView.holder)
+                        
+                        mediaPlayer.setOnPreparedListener { mp ->
+                            Log.d("SecureMediaPagerAdapter", "MediaPlayer prepared successfully for $videoName")
+                            holder.loadingIndicator.visibility = View.GONE
+                            holder.videoView.visibility = View.VISIBLE
+                            mp.isLooping = true
+                            mp.start()
+                        }
+                        
+                        mediaPlayer.setOnErrorListener { mp, what, extra ->
+                            Log.e("SecureMediaPagerAdapter", "MediaPlayer error for $videoName: what=$what, extra=$extra")
+                            holder.loadingIndicator.visibility = View.GONE
+                            mp.release()
+                            true
+                        }
+                        
+                        mediaPlayer.prepareAsync()
+                        
                     } catch (e: Exception) {
-                        Log.e("SecureMediaPagerAdapter", "Failed to force video start", e)
+                        Log.e("SecureMediaPagerAdapter", "Failed alternative MediaPlayer approach", e)
                         holder.loadingIndicator.visibility = View.GONE
                     }
                 }
-            }, 5000) // Reduced to 5 second timeout
+            }, 3000) // Reduced to 3 second timeout
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
