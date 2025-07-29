@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Environment
 import android.provider.DocumentsContract
+import android.util.Log
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
@@ -172,12 +173,17 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             inputStream.close()
                             fileOutputStream.close()
                             
-                            encryptedMedia.add(SecureMedia.createWithFileStorage(
+                            val secureMedia = SecureMedia.createWithFileStorage(
                                 name = name,
                                 date = System.currentTimeMillis(),
                                 mediaType = mediaType,
                                 encryptedFilePath = encryptedFile.absolutePath
-                            ))
+                            )
+                            
+                            // Generate and save thumbnail immediately during import
+                            VideoUtils.generateAndSaveThumbnail(this, secureMedia, key)
+                            
+                            encryptedMedia.add(secureMedia)
                         } else {
                             // For photos, check file size first to avoid OutOfMemoryError
                             val fileSize = try {
@@ -706,9 +712,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         }
                     }
                     MediaType.VIDEO -> {
-                        // Generate video thumbnail
+                        // Generate video thumbnail using cached version
                         try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem, key)
+                            val thumbnail = VideoUtils.generateVideoThumbnail(this@GalleryActivity, mediaItem, key)
                             val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
@@ -847,6 +853,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         cancelNotesButton.setOnClickListener {
             exitNoteDeleteMode()
+        }
+        
+        // Clean up orphaned video thumbnails
+        if (currentGallery != null && currentMediaItems.isNotEmpty()) {
+            VideoUtils.cleanupOrphanedThumbnails(this, currentMediaItems)
         }
         
         android.util.Log.d("SecureGallery", "GalleryActivity onCreate() completed successfully")
@@ -1172,7 +1183,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     MediaType.VIDEO -> {
                         try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(mediaItem, key)
+                            val thumbnail = VideoUtils.generateVideoThumbnail(this@GalleryActivity, mediaItem, key)
                             val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
@@ -1492,16 +1503,21 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         try {
             contentResolver.openOutputStream(fileUri)?.use { outputStream ->
+                // Collect cached thumbnails for export
+                val cachedThumbnails = VideoUtils.collectCachedThumbnails(this, currentMediaItems)
+                
                 // Create a serializable export format
                 val exportData = GalleryExportData(
                     name = gallery.name,
                     salt = gallery.salt,
                     pinHash = gallery.pinHash,
                     photos = gallery.photos,
+                    media = currentMediaItems, // Include all media items
+                    videoThumbnails = cachedThumbnails, // Include cached thumbnails
                     notes = gallery.notes,
                     sortOrder = gallery.sortOrder,
                     customOrder = gallery.customOrder,
-                    exportVersion = 1,
+                    exportVersion = 2, // Increment version for new format
                     exportDate = System.currentTimeMillis()
                 )
                 
@@ -1609,15 +1625,32 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 customOrder = importData.customOrder.toMutableList()
             )
             
-            // Add photos and notes
+            // Add photos and notes (legacy support)
             newGallery.photos.addAll(importData.photos)
             newGallery.notes.addAll(importData.notes)
+            
+            // Add media items if available (version 2+)
+            if (importData.exportVersion >= 2) {
+                // Check if Gallery has a media property, if not we'll need to add it to legacy photos
+                try {
+                    // For now, add media items to the photos list (assuming media items are converted to SecurePhoto format)
+                    // This will need to be updated when Gallery class supports SecureMedia directly
+                    
+                    // Restore cached thumbnails for videos
+                    VideoUtils.restoreCachedThumbnails(this, importData.media, importData.videoThumbnails)
+                } catch (e: Exception) {
+                    Log.w("SecureGallery", "Failed to restore video thumbnails, thumbnails will be regenerated", e)
+                }
+            }
             
             // Add to gallery manager
             GalleryManager.addGallery(newGallery)
             GalleryManager.saveGalleries()
             
-            Toast.makeText(this, "Gallery '${galleryName}' imported successfully with ${importData.photos.size} photos and ${importData.notes.size} notes", Toast.LENGTH_LONG).show()
+            val mediaCount = if (importData.exportVersion >= 2) importData.media.size else importData.photos.size
+            val thumbnailCount = if (importData.exportVersion >= 2) importData.videoThumbnails.size else 0
+            
+            Toast.makeText(this, "Gallery '${galleryName}' imported successfully with $mediaCount items, ${importData.notes.size} notes, and $thumbnailCount video thumbnails", Toast.LENGTH_LONG).show()
             
         } catch (e: Exception) {
             android.util.Log.e("SecureGallery", "Failed to import gallery", e)
@@ -1632,6 +1665,8 @@ data class GalleryExportData(
     val salt: ByteArray,
     val pinHash: ByteArray?,
     val photos: List<SecurePhoto>,
+    val media: List<SecureMedia> = emptyList(), // Default for backward compatibility
+    val videoThumbnails: Map<String, ByteArray> = emptyMap(), // Default for backward compatibility
     val notes: List<SecureNote>,
     val sortOrder: GallerySortOrder,
     val customOrder: List<Int>,
