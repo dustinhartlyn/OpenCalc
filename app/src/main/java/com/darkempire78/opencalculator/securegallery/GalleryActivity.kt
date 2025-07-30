@@ -92,6 +92,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var isRecreating = false
     private var isScreenOff = false
     private var activityStartTime = 0L
+    private var lastSensorLogTime = 0L
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -1012,6 +1013,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     override fun onPause() {
         super.onPause()
         isActivityVisible = false
+        
+        // Unregister accelerometer sensor to save battery
+        sensorManager.unregisterListener(this)
+        android.util.Log.d("SecureGallery", "onPause: Unregistered accelerometer sensor")
+        
         // Security feature: close gallery when app loses focus
         // BUT don't close if photo picker is active or we're recreating the activity
         // ALSO don't close if screen is off (let screen off receiver handle it to avoid duplicate triggers)
@@ -1039,6 +1045,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         super.onResume()
         isActivityVisible = true
         isScreenOff = false // Reset screen off flag when activity resumes
+        
+        // Re-register accelerometer sensor if it was unregistered
+        accelerometer?.let { sensor ->
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+            android.util.Log.d("SecureGallery", "onResume: Re-registered accelerometer sensor")
+        }
+        
         // Reset security trigger when activity becomes visible again after being paused
         // This ensures security works again after each legitimate return to gallery
         android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
@@ -1170,26 +1183,31 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     override fun onSensorChanged(event: SensorEvent?) {
         if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER && isActivityVisible) {
             val currentTime = System.currentTimeMillis()
+            val x = event.values[0]
+            val y = event.values[1]
+            val z = event.values[2]
+            
+            // Debug logging every 2 seconds to help diagnose issues
+            if (currentTime - lastSensorLogTime > 2000) {
+                android.util.Log.d("SecureGallery", "Accelerometer values: x=$x, y=$y, z=$z")
+                lastSensorLogTime = currentTime
+            }
+            
             // Grace period after activity start to prevent false triggers during app launch
             if (currentTime - activityStartTime > 3000) { // 3 second grace period
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
                 
                 // Check for face down detection (Z-axis negative with significant magnitude)
-                if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
-                    android.util.Log.d("SecureGallery", "Security trigger: Face down detected")
+                // Adjusted thresholds to be more reliable across different devices
+                if (z < -7.0 && Math.abs(x) < 4.0 && Math.abs(y) < 4.0) {
+                    android.util.Log.d("SecureGallery", "Security trigger: Face down detected (x=$x, y=$y, z=$z)")
                     closeGalleryForSecurity()
                 }
                 
                 // Shake detection disabled to prevent conflicts with swipe gestures
                 // Users can still use face-down detection for security
             } else if (currentTime - activityStartTime <= 3000) {
-                val x = event.values[0]
-                val y = event.values[1]
-                val z = event.values[2]
-                if (z < -8.0 && Math.abs(x) < 3.0 && Math.abs(y) < 3.0) {
-                    android.util.Log.d("SecureGallery", "Face down detected during grace period (${currentTime - activityStartTime}ms), ignoring")
+                if (z < -7.0 && Math.abs(x) < 4.0 && Math.abs(y) < 4.0) {
+                    android.util.Log.d("SecureGallery", "Face down detected during grace period (${currentTime - activityStartTime}ms), ignoring (x=$x, y=$y, z=$z)")
                 }
             }
         }

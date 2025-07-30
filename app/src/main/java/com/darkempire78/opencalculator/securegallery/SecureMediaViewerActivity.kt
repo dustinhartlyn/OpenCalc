@@ -122,6 +122,7 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                     
                     Log.d("SecureMediaViewer", "Fast swipe down detected (deltaY=$deltaY, velocity=$velocityY) - closing media viewer")
                     finish()
+                    overridePendingTransition(0, R.anim.slide_down_out)
                     return true
                 }
                 return false
@@ -185,6 +186,7 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                         
                         Log.d("SecureMediaViewer", "Slow swipe down completed - closing media viewer")
                         finish()
+                        overridePendingTransition(0, R.anim.slide_down_out)
                         return@setOnTouchListener true
                     }
                 }
