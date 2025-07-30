@@ -19,9 +19,10 @@ object MemoryManager {
     private const val TAG = "MemoryManager"
     
     // Memory thresholds
-    private const val LOW_MEMORY_THRESHOLD = 0.85f // 85% of max heap
-    private const val CRITICAL_MEMORY_THRESHOLD = 0.95f // 95% of max heap
-    private const val MAX_VIDEO_SIZE_MB = 50 // Maximum video size to load fully into memory
+    private const val LOW_MEMORY_THRESHOLD = 0.70f // 70% of max heap - more aggressive
+    private const val CRITICAL_MEMORY_THRESHOLD = 0.85f // 85% of max heap - more aggressive
+    private const val MAX_VIDEO_SIZE_MB = 20 // Maximum video size to load fully into memory - reduced
+    private const val MAX_THUMBNAIL_VIDEO_SIZE_MB = 50 // Max size for thumbnail generation
     
     // Bitmap cache with LRU eviction
     private var bitmapCache: LruCache<String, Bitmap>? = null
@@ -211,6 +212,14 @@ object MemoryManager {
     fun shouldStreamVideo(file: File): Boolean {
         val sizeInMB = file.length() / (1024 * 1024)
         return sizeInMB > MAX_VIDEO_SIZE_MB || isLowMemory()
+    }
+    
+    /**
+     * Check if video is too large for thumbnail generation
+     */
+    fun isVideoTooLargeForThumbnail(file: File): Boolean {
+        val sizeInMB = file.length() / (1024 * 1024)
+        return sizeInMB > MAX_THUMBNAIL_VIDEO_SIZE_MB || isCriticalMemory()
     }
     
     /**

@@ -314,6 +314,15 @@ class MediaImportProgressManager(private val context: Context) {
                     return@withContext
                 }
                 
+                // Check if video is too large for thumbnail generation
+                if (encryptedFile.mediaType == MediaType.VIDEO) {
+                    val fileSizeMB = file.length() / (1024 * 1024)
+                    if (MemoryManager.isVideoTooLargeForThumbnail(file)) {
+                        Log.w(TAG, "Video too large for thumbnail generation: ${encryptedFile.fileName} (${fileSizeMB}MB)")
+                        return@withContext
+                    }
+                }
+                
                 // Use the enhanced gallery integration for thumbnail generation
                 val galleryIntegration = EnhancedGalleryIntegration(context)
                 

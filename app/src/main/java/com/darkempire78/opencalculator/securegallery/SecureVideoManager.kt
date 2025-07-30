@@ -61,9 +61,27 @@ class SecureVideoManager(private val context: Context) {
         }
         
         try {
-            Log.d(TAG, "Generating video thumbnail for: ${encryptedFile.name}")
+            val fileSizeMB = encryptedFile.length() / (1024 * 1024)
+            Log.d(TAG, "Generating video thumbnail for: ${encryptedFile.name} (${fileSizeMB}MB)")
             
-            // Always use simple thumbnail generation to avoid complexity
+            // Skip thumbnail generation for very large videos that caused OutOfMemoryError
+            if (MemoryManager.isVideoTooLargeForThumbnail(encryptedFile)) {
+                Log.w(TAG, "Video too large for thumbnail generation: ${encryptedFile.name} (${fileSizeMB}MB), using default thumbnail")
+                // Return a default video thumbnail instead of null
+                val defaultThumbnail = DefaultThumbnailGenerator.createDefaultVideoThumbnail(context, maxWidth, maxHeight)
+                if (defaultThumbnail != null) {
+                    thumbnailCache[cacheKey] = defaultThumbnail
+                }
+                return@withContext defaultThumbnail
+            }
+            
+            // Force memory cleanup before processing
+            if (MemoryManager.isLowMemory()) {
+                MemoryManager.forceMemoryCleanup()
+                delay(500) // Give GC time to work
+            }
+            
+            // Generate thumbnail with memory safety
             val thumbnail = generateSimpleVideoThumbnail(encryptedFile, encryptionKey, maxWidth, maxHeight)
             
             // Cache the thumbnail if successful
@@ -83,7 +101,9 @@ class SecureVideoManager(private val context: Context) {
                 thumbnailCache[cacheKey] = it
                 Log.d(TAG, "Successfully cached thumbnail for: ${encryptedFile.name}")
             } ?: run {
-                Log.w(TAG, "Failed to generate thumbnail for: ${encryptedFile.name}")
+                Log.w(TAG, "Failed to generate thumbnail for: ${encryptedFile.name}, using default")
+                // Create a default video thumbnail as fallback
+                DefaultThumbnailGenerator.createDefaultVideoThumbnail(context, maxWidth, maxHeight)
             }
             
             thumbnail
@@ -95,7 +115,7 @@ class SecureVideoManager(private val context: Context) {
     }
     
     /**
-     * Simple video thumbnail generation - reliable and straightforward
+     * Simple video thumbnail generation using streaming approach - MEMORY EFFICIENT
      */
     private suspend fun generateSimpleVideoThumbnail(
         encryptedFile: File,
@@ -108,54 +128,86 @@ class SecureVideoManager(private val context: Context) {
         var retriever: MediaMetadataRetriever? = null
         
         return try {
-            // Decrypt video to temporary file
-            tempVideoFile = File.createTempFile("video_thumb_", ".mp4", context.cacheDir)
+            Log.d(TAG, "Starting streaming video thumbnail generation")
             
-            // Decrypt the video file
-            val encryptedData = encryptedFile.readBytes()
-            val decryptedData = decryptDataWithKey(encryptedData, encryptionKey)
-            tempVideoFile.writeBytes(decryptedData)
-            
-            Log.d(TAG, "Decrypted video to temp file: ${tempVideoFile.absolutePath}")
-            
-            // Use MediaMetadataRetriever to get thumbnail
-            retriever = MediaMetadataRetriever()
-            retriever.setDataSource(tempVideoFile.absolutePath)
-            
-            // Try to get frame at 1 second, fallback to beginning
-            var bitmap = try {
-                retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to get frame at 1s, trying beginning", e)
-                null
-            }
-            
-            // Fallback to first frame
-            if (bitmap == null) {
-                bitmap = try {
-                    retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+            // Add timeout to prevent hanging
+            withTimeout(30000) { // 30 second timeout
+                
+                // Create temp video file in cache directory with unique name
+                tempVideoFile = File.createTempFile("video_thumb_", ".mp4", context.cacheDir)
+                
+                // Stream only the first portion of the video for thumbnail generation
+                val streamedSize = streamVideoHeaderForThumbnail(encryptedFile, tempVideoFile, encryptionKey)
+                
+                if (streamedSize == 0L) {
+                    Log.w(TAG, "Failed to stream video data for thumbnail")
+                    return@withTimeout null
+                }
+                
+                Log.d(TAG, "Streamed ${streamedSize / 1024}KB for thumbnail generation (instead of ${encryptedFile.length() / 1024}KB)")
+                
+                // Use MediaMetadataRetriever to get thumbnail from streamed portion
+                retriever = MediaMetadataRetriever()
+                retriever.setDataSource(tempVideoFile.absolutePath)
+                
+                // Try to get frame at 1 second, fallback to beginning
+                var bitmap = try {
+                    retriever.getFrameAtTime(1_000_000L, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Failed to get first frame", e)
+                    Log.w(TAG, "Failed to get frame at 1s, trying beginning", e)
+                    null
+                }
+                
+                // Fallback to first frame
+                if (bitmap == null) {
+                    bitmap = try {
+                        retriever.getFrameAtTime(0, MediaMetadataRetriever.OPTION_CLOSEST)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Failed to get first frame, trying any frame", e)
+                        // Try getting any available frame
+                        try {
+                            retriever.getFrameAtTime(-1, MediaMetadataRetriever.OPTION_CLOSEST_SYNC)
+                        } catch (e2: Exception) {
+                            Log.w(TAG, "Failed to get any frame", e2)
+                            null
+                        }
+                    }
+                }
+                
+                // Scale bitmap if needed and memory allows
+                bitmap?.let { originalBitmap ->
+                    if (!MemoryManager.isLowMemory() && 
+                        (originalBitmap.width > maxWidth || originalBitmap.height > maxHeight)) {
+                        
+                        try {
+                            val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, maxWidth, maxHeight, true)
+                            if (scaledBitmap != originalBitmap) {
+                                originalBitmap.recycle()
+                            }
+                            Log.d(TAG, "Scaled thumbnail to ${maxWidth}x${maxHeight}")
+                            scaledBitmap
+                        } catch (e: OutOfMemoryError) {
+                            Log.w(TAG, "OutOfMemoryError scaling thumbnail, using original")
+                            originalBitmap
+                        }
+                    } else {
+                        originalBitmap
+                    }
+                } ?: run {
+                    Log.w(TAG, "No bitmap generated from streamed video")
                     null
                 }
             }
             
-            // Scale bitmap if needed
-            bitmap?.let { originalBitmap ->
-                if (originalBitmap.width > maxWidth || originalBitmap.height > maxHeight) {
-                    val scaledBitmap = Bitmap.createScaledBitmap(originalBitmap, maxWidth, maxHeight, true)
-                    if (scaledBitmap != originalBitmap) {
-                        originalBitmap.recycle()
-                    }
-                    Log.d(TAG, "Scaled thumbnail to ${maxWidth}x${maxHeight}")
-                    scaledBitmap
-                } else {
-                    originalBitmap
-                }
-            }
-            
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Video thumbnail generation timed out for: ${encryptedFile.name}")
+            null
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "OutOfMemoryError in video thumbnail generation for: ${encryptedFile.name}")
+            MemoryManager.forceMemoryCleanup()
+            null
         } catch (e: Exception) {
-            Log.e(TAG, "Error in simple video thumbnail generation", e)
+            Log.e(TAG, "Error in streaming video thumbnail generation", e)
             null
         } finally {
             // Cleanup
@@ -181,18 +233,87 @@ class SecureVideoManager(private val context: Context) {
     }
     
     /**
-     * Decrypt data using AES encryption - placeholder implementation
+     * Stream only the header and first few seconds of video for thumbnail generation
+     * This avoids loading the entire video into memory
      */
-    private fun decryptDataWithKey(encryptedData: ByteArray, encryptionKey: String): ByteArray {
+    private suspend fun streamVideoHeaderForThumbnail(
+        encryptedFile: File,
+        outputFile: File,
+        encryptionKey: String
+    ): Long {
+        
         return try {
-            val key = SecretKeySpec(encryptionKey.toByteArray(Charsets.UTF_8).copyOf(16), "AES")
-            val cipher = Cipher.getInstance("AES")
-            cipher.init(Cipher.DECRYPT_MODE, key)
-            cipher.doFinal(encryptedData)
+            // Determine how much video data we need for thumbnail generation
+            // For MP4 files, we typically need:
+            // - File header (first 64KB for metadata)
+            // - First keyframe and a few seconds of video data
+            // This usually means 2-5MB is more than enough for thumbnail generation
+            
+            val maxStreamSize = calculateOptimalStreamSize(encryptedFile)
+            
+            Log.d(TAG, "Streaming first ${maxStreamSize / 1024}KB of ${encryptedFile.length() / 1024}KB video for thumbnail")
+            
+            var totalBytesWritten = 0L
+            val buffer = ByteArray(64 * 1024) // 64KB buffer for streaming
+            
+            FileInputStream(encryptedFile).use { inputStream ->
+                FileOutputStream(outputFile).use { outputStream ->
+                    
+                    var bytesRead: Int
+                    var totalBytesRead = 0L
+                    
+                    while (totalBytesRead < maxStreamSize && 
+                           inputStream.read(buffer).also { bytesRead = it } != -1) {
+                        
+                        // Calculate how much to read (don't exceed maxStreamSize)
+                        val bytesToProcess = minOf(bytesRead, (maxStreamSize - totalBytesRead).toInt())
+                        
+                        // Decrypt this chunk
+                        val encryptedChunk = buffer.copyOf(bytesToProcess)
+                        val decryptedChunk = decryptDataWithKey(encryptedChunk, encryptionKey)
+                        
+                        // Write decrypted chunk to output
+                        outputStream.write(decryptedChunk)
+                        
+                        totalBytesRead += bytesToProcess
+                        totalBytesWritten += decryptedChunk.size
+                        
+                        // Yield to prevent blocking the main thread
+                        if (totalBytesRead % (512 * 1024) == 0L) { // Every 512KB
+                            yield()
+                        }
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Successfully streamed ${totalBytesWritten / 1024}KB for thumbnail generation")
+            totalBytesWritten
+            
         } catch (e: Exception) {
-            Log.e(TAG, "Decryption failed, returning original data", e)
-            // Fallback: return original data (might not be encrypted)
-            encryptedData
+            Log.e(TAG, "Error streaming video header", e)
+            0L
+        }
+    }
+    
+    /**
+     * Calculate optimal stream size based on video file size and available memory
+     */
+    private fun calculateOptimalStreamSize(encryptedFile: File): Long {
+        val fileSizeBytes = encryptedFile.length()
+        val fileSizeMB = fileSizeBytes / (1024 * 1024)
+        
+        return when {
+            // For very large files (>100MB), stream only 3MB
+            fileSizeMB > 100 -> 3 * 1024 * 1024L
+            
+            // For large files (50-100MB), stream 5MB
+            fileSizeMB > 50 -> 5 * 1024 * 1024L
+            
+            // For medium files (20-50MB), stream 8MB
+            fileSizeMB > 20 -> 8 * 1024 * 1024L
+            
+            // For small files (<20MB), stream up to 50% of the file
+            else -> minOf(fileSizeBytes / 2, 10 * 1024 * 1024L)
         }
     }
     
