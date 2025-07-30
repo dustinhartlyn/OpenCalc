@@ -160,9 +160,10 @@ object VideoUtils {
     
     /**
      * Generates a thumbnail bitmap from SecureMedia (with caching)
+     * Note: This method is kept for backward compatibility but ThumbnailGenerator is preferred
      */
     fun generateVideoThumbnail(context: Context, secureMedia: SecureMedia, key: javax.crypto.spec.SecretKeySpec): android.graphics.Bitmap? {
-        // First, try to load from cache
+        // First, try to load from cache (both encrypted and unencrypted formats)
         val cachedThumbnail = loadCachedThumbnail(context, secureMedia)
         if (cachedThumbnail != null) {
             return cachedThumbnail

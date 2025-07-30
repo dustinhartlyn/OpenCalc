@@ -401,8 +401,15 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             }
             MediaType.VIDEO -> {
                 try {
-                    // Use cached thumbnail if available, otherwise generate using streaming
-                    val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
+                    // Try to load encrypted thumbnail first (newer format)
+                    val galleryName = intent.getStringExtra("gallery_name") ?: ""
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                    val cachedThumbnail = if (File(thumbnailPath).exists()) {
+                        ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
+                    } else {
+                        // Fall back to old VideoUtils cache (unencrypted)
+                        VideoUtils.loadCachedThumbnail(this, mediaItem)
+                    }
                     val thumbnail = if (cachedThumbnail != null) {
                         cachedThumbnail
                     } else {
@@ -434,7 +441,15 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             // ThumbnailGenerator returns the path to cached thumbnail, 
                             // so we need to load the actual bitmap for display
                             if (thumbnailPath != null) {
-                                val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
+                                // Try to load encrypted thumbnail first
+                                val galleryName = intent.getStringExtra("gallery_name") ?: ""
+                                val encryptedThumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                                val cachedThumbnail = if (File(encryptedThumbnailPath).exists()) {
+                                    ThumbnailGenerator.loadEncryptedThumbnail(encryptedThumbnailPath, key!!)
+                                } else {
+                                    // Fall back to old VideoUtils cache if no encrypted thumbnail
+                                    VideoUtils.loadCachedThumbnail(this, mediaItem)
+                                }
                                 cachedThumbnail ?: VideoUtils.generateVideoThumbnailFromFile(
                                     if (mediaItem.usesExternalStorage()) mediaItem.filePath!! else thumbnailPath, 
                                     key!!
