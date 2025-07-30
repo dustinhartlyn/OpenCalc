@@ -25,10 +25,6 @@ import java.io.FileInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import android.hardware.Sensor
-import android.hardware.SensorEvent
-import android.hardware.SensorEventListener
-import android.hardware.SensorManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
@@ -40,7 +36,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.appcompat.app.AlertDialog
 import android.net.Uri
 
-class GalleryActivity : AppCompatActivity(), SensorEventListener {
+class GalleryActivity : AppCompatActivity() {
     companion object {
         const val PHOTO_VIEWER_REQUEST = 1002
         private const val TAG = "GalleryActivity"
@@ -83,16 +79,10 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     private var organizeMedia = mutableListOf<MediaThumbnail?>()
     
     // Security features
-    private lateinit var sensorManager: SensorManager
-    private var accelerometer: Sensor? = null
-    private var isActivityVisible = true
-    private var screenOffReceiver: BroadcastReceiver? = null
+    private var securityManager: SecurityManager? = null
     private var isPhotoPickerActive = false
     private var isMediaViewerActive = false
     private var isRecreating = false
-    private var isScreenOff = false
-    private var activityStartTime = 0L
-    private var lastSensorLogTime = 0L
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -1012,49 +1002,31 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     override fun onPause() {
         super.onPause()
-        isActivityVisible = false
         
-        // Unregister accelerometer sensor to save battery
-        sensorManager.unregisterListener(this)
-        android.util.Log.d("SecureGallery", "onPause: Unregistered accelerometer sensor")
+        // Disable security monitoring during pause
+        securityManager?.disable()
+        Log.d("SecureGallery", "onPause: Security monitoring disabled")
         
-        // Security feature: close gallery when app loses focus
-        // BUT don't close if photo picker is active or we're recreating the activity
-        // ALSO don't close if screen is off (let screen off receiver handle it to avoid duplicate triggers)
-        // ALSO add a small delay to prevent immediate closure during activity startup
-        // ALSO ignore pauses within the first 2 seconds of activity creation (startup grace period)
-        val timeSinceStart = System.currentTimeMillis() - activityStartTime
-        if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating && !isScreenOff && timeSinceStart > 2000) {
-            android.util.Log.d("SecureGallery", "onPause called - scheduling delayed security check (time since start: ${timeSinceStart}ms)")
-            // Use a small delay to prevent immediate closure during activity startup
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                // Double-check that we're still paused and conditions haven't changed
-                if (!isActivityVisible && !isPhotoPickerActive && !isMediaViewerActive && !isRecreating && !isScreenOff) {
-                    android.util.Log.d("SecureGallery", "Delayed security check - triggering security for app focus loss")
-                    closeGalleryForSecurity()
-                } else {
-                    android.util.Log.d("SecureGallery", "Delayed security check - conditions changed, NOT triggering security")
-                }
-            }, 250) // 250ms delay to allow for brief lifecycle transitions
+        // Only trigger security closure for legitimate app focus loss
+        // NOT for system-level lifecycle events
+        if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
+            Log.d("SecureGallery", "onPause: Legitimate app focus loss - triggering security")
+            closeGalleryForSecurity()
         } else {
-            android.util.Log.d("SecureGallery", "onPause called - NOT triggering security (photoPickerActive=$isPhotoPickerActive, mediaViewerActive=$isMediaViewerActive, recreating=$isRecreating, screenOff=$isScreenOff, timeSinceStart=${timeSinceStart}ms)")
+            Log.d("SecureGallery", "onPause: System lifecycle event - NOT triggering security (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
         }
     }
     
     override fun onResume() {
         super.onResume()
-        isActivityVisible = true
-        isScreenOff = false // Reset screen off flag when activity resumes
         
-        // Re-register accelerometer sensor if it was unregistered
-        accelerometer?.let { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-            android.util.Log.d("SecureGallery", "onResume: Re-registered accelerometer sensor")
-        }
+        // Enable security monitoring when activity becomes active
+        securityManager?.enable()
+        Log.d("SecureGallery", "onResume: Security monitoring enabled")
         
         // Reset security trigger when activity becomes visible again after being paused
         // This ensures security works again after each legitimate return to gallery
-        android.util.Log.d("SecureGallery", "onResume called, clearing security trigger")
+        Log.d("SecureGallery", "onResume called, clearing security trigger")
         
         // Only refresh if we're returning from photo picker or if media viewer was NOT active
         // This prevents duplicate thumbnails when returning from photo viewer
@@ -1116,48 +1088,19 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     // Security feature implementations
     private fun initializeSecurity() {
-        // Initialize accelerometer
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
-        
-        // Register accelerometer listener
-        accelerometer?.let { sensor ->
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL)
-        }
-        
-        // Register screen off receiver
-        screenOffReceiver = object : BroadcastReceiver() {
-            override fun onReceive(context: Context?, intent: Intent?) {
-                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                    val timeSinceStart = System.currentTimeMillis() - activityStartTime
-                    if (timeSinceStart > 2000) {
-                        android.util.Log.d("SecureGallery", "Screen off detected after grace period (${timeSinceStart}ms), triggering security")
-                        isScreenOff = true
-                        closeGalleryForSecurity()
-                    } else {
-                        android.util.Log.d("SecureGallery", "Screen off detected during grace period (${timeSinceStart}ms), ignoring")
-                    }
-                }
+        // Initialize proper security manager
+        securityManager = SecurityManager(this, object : SecurityManager.SecurityEventListener {
+            override fun onSecurityTrigger(reason: String) {
+                Log.d("SecureGallery", "Security trigger: $reason")
+                closeGalleryForSecurity()
             }
-        }
-        
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        registerReceiver(screenOffReceiver, filter)
+        })
     }
     
     private fun cleanupSecurity() {
-        // Unregister accelerometer listener
-        sensorManager.unregisterListener(this)
-        
-        // Unregister screen off receiver
-        screenOffReceiver?.let { receiver ->
-            try {
-                unregisterReceiver(receiver)
-            } catch (e: Exception) {
-                // Receiver might not be registered
-            }
-        }
-        screenOffReceiver = null
+        // Cleanup security manager
+        securityManager?.disable()
+        securityManager = null
     }
     
     private fun closeGalleryForSecurity() {
@@ -1180,51 +1123,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
     
     // SensorEventListener implementation for accelerometer
-    override fun onSensorChanged(event: SensorEvent?) {
-        if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER && isActivityVisible) {
-            val currentTime = System.currentTimeMillis()
-            val x = event.values[0]
-            val y = event.values[1]
-            val z = event.values[2]
-            
-            // Debug logging every 2 seconds to help diagnose issues
-            if (currentTime - lastSensorLogTime > 2000) {
-                android.util.Log.d("SecureGallery", "Accelerometer values: x=$x, y=$y, z=$z")
-                lastSensorLogTime = currentTime
-            }
-            
-            // Grace period after activity start to prevent false triggers during app launch
-            if (currentTime - activityStartTime > 3000) { // 3 second grace period
-                
-                // Check for face down detection (Z-axis negative with significant magnitude)
-                // Adjusted thresholds to be more reliable across different devices
-                if (z < -7.0 && Math.abs(x) < 4.0 && Math.abs(y) < 4.0) {
-                    android.util.Log.d("SecureGallery", "Security trigger: Face down detected (x=$x, y=$y, z=$z)")
-                    closeGalleryForSecurity()
-                }
-                
-                // Shake detection disabled to prevent conflicts with swipe gestures
-                // Users can still use face-down detection for security
-            } else if (currentTime - activityStartTime <= 3000) {
-                if (z < -7.0 && Math.abs(x) < 4.0 && Math.abs(y) < 4.0) {
-                    android.util.Log.d("SecureGallery", "Face down detected during grace period (${currentTime - activityStartTime}ms), ignoring (x=$x, y=$y, z=$z)")
-                }
-            }
-        }
-    }
-    
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Not needed for this implementation
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         android.util.Log.d("SecureGallery", "GalleryActivity onCreate() started")
         setContentView(R.layout.activity_gallery)
 
-        // Record activity start time for startup grace period
-        activityStartTime = System.currentTimeMillis()
-        android.util.Log.d("SecureGallery", "Activity start time recorded: $activityStartTime")
+        // Keep screen on while gallery is active to prevent authentication timeout issues
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        android.util.Log.d("SecureGallery", "Screen keep-on flag set for gallery")
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
@@ -1237,6 +1143,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Clear security trigger since we successfully entered the gallery
         TempPinHolder.clearSecurityTrigger()
+        android.util.Log.d("SecureGallery", "onCreate: Gallery started successfully, security trigger cleared")
         
         // Reset recreation flag
         isRecreating = false
