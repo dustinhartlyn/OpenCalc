@@ -85,10 +85,19 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         mediaViewPager.adapter = adapter
         mediaViewPager.setCurrentItem(currentPosition, false)
         
-        // Setup swipe down gesture to close media viewer (supports both fast and slow swipes)
+        // Add a touch interceptor view on top of ViewPager2 to ensure gesture detection
+        val touchInterceptor = findViewById<View>(android.R.id.content)
+        touchInterceptor.setOnTouchListener { _, event ->
+            // Process touch events for swipe detection before ViewPager2 handles them
+            window.decorView.findViewById<View>(android.R.id.content).dispatchTouchEvent(event)
+            false // Let other views handle the event normally
+        }
+        
+        // Setup enhanced swipe down gesture to close media viewer (supports both fast and slow swipes)
         var startY = 0f
         var startX = 0f
         var isDownwardSwipe = false
+        var swipeStartTime = 0L
         
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(
@@ -102,16 +111,16 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                 val deltaY = e2.y - e1.y
                 val deltaX = e2.x - e1.x
                 
-                // Check for fast downward swipe
-                val minSwipeDistance = 80 * resources.displayMetrics.density // Reduced from 100dp
-                val minSwipeVelocity = 400 * resources.displayMetrics.density // Reduced from 600dp/s
+                // Check for fast downward swipe with more lenient thresholds
+                val minSwipeDistance = 60 * resources.displayMetrics.density // Further reduced from 80dp
+                val minSwipeVelocity = 300 * resources.displayMetrics.density // Further reduced from 400dp/s
                 
                 // Ensure it's more vertical than horizontal (prevents conflicts with horizontal swipes)
                 if (deltaY > minSwipeDistance && 
                     velocityY > minSwipeVelocity && 
-                    abs(deltaY) > abs(deltaX) * 1.2) { // Reduced ratio from 1.5 to 1.2
+                    abs(deltaY) > abs(deltaX)) { // Simplified: just needs to be more vertical
                     
-                    Log.d("SecureMediaViewer", "Fast swipe down detected - closing media viewer")
+                    Log.d("SecureMediaViewer", "Fast swipe down detected (deltaY=$deltaY, velocity=$velocityY) - closing media viewer")
                     finish()
                     return true
                 }
@@ -130,33 +139,49 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                 val deltaY = e2.y - e1.y
                 val deltaX = e2.x - e1.x
                 
-                // Check if this is a significant downward movement
-                if (deltaY > 50 * resources.displayMetrics.density && // Minimum 50dp movement
-                    abs(deltaY) > abs(deltaX) * 1.2) { // More vertical than horizontal
+                // Check if this is a significant downward movement with more lenient requirements
+                if (deltaY > 40 * resources.displayMetrics.density && // Reduced from 50dp
+                    abs(deltaY) > abs(deltaX)) { // Simplified: just needs to be more vertical
                     isDownwardSwipe = true
-                    Log.d("SecureMediaViewer", "Slow swipe down in progress: deltaY=$deltaY")
+                    Log.d("SecureMediaViewer", "Slow swipe down in progress: deltaY=$deltaY, ratio=${abs(deltaY)/abs(deltaX)}")
                 }
                 
                 return false
             }
         })
         
-        // Apply gesture detection with custom touch handling for slow swipes
-        mediaViewPager.setOnTouchListener { _, event ->
+        // Override dispatchTouchEvent to intercept touches before ViewPager2 processes them
+        window.decorView.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
                     startY = event.y
                     startX = event.x
                     isDownwardSwipe = false
+                    swipeStartTime = System.currentTimeMillis()
+                    Log.d("SecureMediaViewer", "Touch down at: x=$startX, y=$startY")
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val deltaY = event.y - startY
+                    val deltaX = event.x - startX
+                    
+                    // Track progressive downward movement
+                    if (deltaY > 30 * resources.displayMetrics.density && 
+                        abs(deltaY) > abs(deltaX)) {
+                        isDownwardSwipe = true
+                        Log.d("SecureMediaViewer", "Tracking downward swipe: deltaY=$deltaY")
+                    }
                 }
                 MotionEvent.ACTION_UP -> {
                     val deltaY = event.y - startY
                     val deltaX = event.x - startX
+                    val swipeDuration = System.currentTimeMillis() - swipeStartTime
                     
-                    // Handle slow swipe completion
+                    Log.d("SecureMediaViewer", "Touch up: deltaY=$deltaY, deltaX=$deltaX, duration=${swipeDuration}ms, isDownwardSwipe=$isDownwardSwipe")
+                    
+                    // Handle slow swipe completion with very lenient requirements
                     if (isDownwardSwipe || 
-                        (deltaY > 120 * resources.displayMetrics.density && // 120dp minimum for slow swipes
-                         abs(deltaY) > abs(deltaX) * 1.2)) {
+                        (deltaY > 80 * resources.displayMetrics.density && // Reduced from 120dp
+                         abs(deltaY) > abs(deltaX))) { // Just needs to be more vertical
                         
                         Log.d("SecureMediaViewer", "Slow swipe down completed - closing media viewer")
                         finish()
@@ -165,8 +190,9 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                 }
             }
             
+            // Always pass touch events to the gesture detector
             gestureDetector.onTouchEvent(event)
-            false // Don't consume the event, let ViewPager handle normal swipes
+            false // Don't consume the event, let other views handle it
         }
         
         // Handle page changes
@@ -199,6 +225,35 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         
         // Set up return behavior - return the current position
         setResult(Activity.RESULT_OK, Intent().putExtra("return_position", currentPosition))
+    }
+    
+    // Override dispatchTouchEvent to ensure our gesture detection happens at the activity level
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        // Process all touch events through our gesture detection system first
+        ev?.let { event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    Log.d("SecureMediaViewer", "Activity received touch down at: x=${event.x}, y=${event.y}")
+                }
+                MotionEvent.ACTION_UP -> {
+                    Log.d("SecureMediaViewer", "Activity received touch up at: x=${event.x}, y=${event.y}")
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    Log.d("SecureMediaViewer", "Activity received touch move to: x=${event.x}, y=${event.y}")
+                }
+            }
+            
+            // Always process through our gesture detector
+            gestureDetector.onTouchEvent(event)
+            
+            // Also process through our window decorView touch listener
+            window.decorView.findViewById<View>(android.R.id.content)?.let { content ->
+                content.onTouchEvent(event)
+            }
+        }
+        
+        // Always pass the event to the normal dispatch chain
+        return super.dispatchTouchEvent(ev)
     }
     
     override fun onPause() {

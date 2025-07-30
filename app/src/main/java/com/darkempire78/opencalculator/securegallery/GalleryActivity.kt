@@ -1182,12 +1182,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     closeGalleryForSecurity()
                 }
                 
-                // Check for shake detection (significant acceleration)
-                val acceleration = kotlin.math.sqrt((x * x + y * y + z * z).toDouble())
-                if (acceleration > 15.0 && !isScreenOff) { // Only trigger if screen is not off
-                    android.util.Log.d("SecureGallery", "Security trigger: Device shake detected")
-                    closeGalleryForSecurity()
-                }
+                // Shake detection disabled to prevent conflicts with swipe gestures
+                // Users can still use face-down detection for security
             } else if (currentTime - activityStartTime <= 3000) {
                 val x = event.values[0]
                 val y = event.values[1]
