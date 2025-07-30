@@ -1021,9 +1021,12 @@ class GalleryActivity : AppCompatActivity() {
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
             val timeSinceSecurityStart = System.currentTimeMillis() - securityStartTime
             
-            if (timeSinceSecurityStart > 3000) { // Give startup more time
+            // Only trigger security if not already triggered (e.g., by face-down detection)
+            if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
                 Log.d("SecureGallery", "onStop: App truly backgrounded - triggering security")
                 TempPinHolder.securityTriggered = true
+            } else if (TempPinHolder.securityTriggered) {
+                Log.d("SecureGallery", "onStop: Security already triggered (probably by face-down) - not setting again")
             } else {
                 Log.d("SecureGallery", "onStop: During startup protection period (${timeSinceSecurityStart}ms) - NOT triggering security")
             }
@@ -1034,20 +1037,22 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onRestart() {
         super.onRestart()
-        Log.d("SecureGallery", "onRestart: Activity restarting")
+        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}")
         
-        // Check if security was triggered
+        // Check if security was triggered - but only if this is truly a restart, not a fresh launch
         if (TempPinHolder.securityTriggered) {
-            Log.d("SecureGallery", "onRestart: Security triggered - closing gallery")
+            Log.d("SecureGallery", "onRestart: Security triggered detected - closing gallery")
             finish()
             return
+        } else {
+            Log.d("SecureGallery", "onRestart: No security trigger, proceeding normally")
         }
     }
     
     override fun onResume() {
         super.onResume()
         
-        Log.d("SecureGallery", "onResume: Resuming activity")
+        Log.d("SecureGallery", "onResume: Resuming activity, securityTriggered=${TempPinHolder.securityTriggered}")
         
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
@@ -1150,7 +1155,7 @@ class GalleryActivity : AppCompatActivity() {
     // SensorEventListener implementation for accelerometer
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        android.util.Log.d("SecureGallery", "GalleryActivity onCreate() started")
+        android.util.Log.d("SecureGallery", "GalleryActivity onCreate() started, securityTriggered=${TempPinHolder.securityTriggered}")
         setContentView(R.layout.activity_gallery)
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
