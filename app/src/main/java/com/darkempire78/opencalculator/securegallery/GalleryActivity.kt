@@ -318,10 +318,13 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         
         // Load pre-generated thumbnail instead of generating on-demand
         val thumbnail = try {
-            if (mediaItem.hasThumbnail()) {
+            // Always try to load encrypted thumbnail first
+            val galleryName = intent.getStringExtra("gallery_name") ?: ""
+            val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+            
+            if (File(thumbnailPath).exists()) {
                 // Load the pre-generated encrypted thumbnail
-                val galleryName = intent.getStringExtra("gallery_name") ?: ""
-                val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                android.util.Log.d("SecureGallery", "Loading encrypted thumbnail for ${mediaItem.name}")
                 val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                 val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                     VideoUtils.getVideoDuration(mediaItem, key)
@@ -371,26 +374,40 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         return when (mediaItem.mediaType) {
             MediaType.PHOTO -> {
                 try {
-                    val encryptedData = mediaItem.getEncryptedData()
-                    if (encryptedData.size < 16) {
-                        Log.e("SecureGallery", "Encrypted data too small for photo: ${mediaItem.name}")
-                        return null
+                    // Try to load encrypted thumbnail first (newer format)
+                    val galleryName = intent.getStringExtra("gallery_name") ?: ""
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                    val cachedThumbnail = if (File(thumbnailPath).exists()) {
+                        ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
+                    } else {
+                        null
                     }
-                    val iv = encryptedData.copyOfRange(0, 16)
-                    val ct = encryptedData.copyOfRange(16, encryptedData.size)
-                    val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
                     
-                    // Create a very small thumbnail to save memory and prevent ANR
-                    val options = android.graphics.BitmapFactory.Options().apply {
-                        inSampleSize = 16 // Scale down by factor of 16 for extremely small thumbnails
-                        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 // Use less memory
-                        inPurgeable = true // Allow system to purge bitmap if needed
-                        inInputShareable = true
-                        inTempStorage = ByteArray(16 * 1024) // Use smaller temp storage
+                    val bitmap = if (cachedThumbnail != null) {
+                        cachedThumbnail
+                    } else {
+                        // Fall back to generating thumbnail from original data
+                        val encryptedData = mediaItem.getEncryptedData()
+                        if (encryptedData.size < 16) {
+                            Log.e("SecureGallery", "Encrypted data too small for photo: ${mediaItem.name}")
+                            return null
+                        }
+                        val iv = encryptedData.copyOfRange(0, 16)
+                        val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                        val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                        
+                        // Create a very small thumbnail to save memory and prevent ANR
+                        val options = android.graphics.BitmapFactory.Options().apply {
+                            inSampleSize = 16 // Scale down by factor of 16 for extremely small thumbnails
+                            inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 // Use less memory
+                            inPurgeable = true // Allow system to purge bitmap if needed
+                            inInputShareable = true
+                            inTempStorage = ByteArray(16 * 1024) // Use smaller temp storage
+                        }
+                        android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
                     }
-                    val bitmap = android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
                     
-                    // Clear decrypted bytes immediately to free memory
+                    // Clear memory immediately
                     System.gc()
                     
                     MediaThumbnail(bitmap, null, mediaItem.mediaType)
