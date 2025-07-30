@@ -83,6 +83,7 @@ class GalleryActivity : AppCompatActivity() {
     private var isPhotoPickerActive = false
     private var isMediaViewerActive = false
     private var isRecreating = false
+    private var securityStartTime = 0L
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -1007,26 +1008,50 @@ class GalleryActivity : AppCompatActivity() {
         securityManager?.disable()
         Log.d("SecureGallery", "onPause: Security monitoring disabled")
         
-        // Only trigger security closure for legitimate app focus loss
-        // NOT for system-level lifecycle events
+        // Don't immediately trigger security on pause - let other mechanisms handle it
+        // This prevents false positives during startup and normal lifecycle events
+        Log.d("SecureGallery", "onPause: Activity paused (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+    }
+    
+    override fun onStop() {
+        super.onStop()
+        
+        // onStop means the activity is no longer visible to the user
+        // This is a more reliable indicator than onPause for actual app switching
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
-            Log.d("SecureGallery", "onPause: Legitimate app focus loss - triggering security")
-            closeGalleryForSecurity()
+            val timeSinceSecurityStart = System.currentTimeMillis() - securityStartTime
+            
+            if (timeSinceSecurityStart > 3000) { // Give startup more time
+                Log.d("SecureGallery", "onStop: App truly backgrounded - triggering security")
+                TempPinHolder.securityTriggered = true
+            } else {
+                Log.d("SecureGallery", "onStop: During startup protection period (${timeSinceSecurityStart}ms) - NOT triggering security")
+            }
         } else {
-            Log.d("SecureGallery", "onPause: System lifecycle event - NOT triggering security (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+            Log.d("SecureGallery", "onStop: System activity transition - NOT triggering security")
+        }
+    }
+
+    override fun onRestart() {
+        super.onRestart()
+        Log.d("SecureGallery", "onRestart: Activity restarting")
+        
+        // Check if security was triggered
+        if (TempPinHolder.securityTriggered) {
+            Log.d("SecureGallery", "onRestart: Security triggered - closing gallery")
+            finish()
+            return
         }
     }
     
     override fun onResume() {
         super.onResume()
         
+        Log.d("SecureGallery", "onResume: Resuming activity")
+        
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
         Log.d("SecureGallery", "onResume: Security monitoring enabled")
-        
-        // Reset security trigger when activity becomes visible again after being paused
-        // This ensures security works again after each legitimate return to gallery
-        Log.d("SecureGallery", "onResume called, clearing security trigger")
         
         // Only refresh if we're returning from photo picker or if media viewer was NOT active
         // This prevents duplicate thumbnails when returning from photo viewer
@@ -1134,6 +1159,10 @@ class GalleryActivity : AppCompatActivity() {
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
+
+        // Record when security system becomes active to prevent startup false positives
+        securityStartTime = System.currentTimeMillis()
+        Log.d("SecureGallery", "Security start time recorded for startup protection")
         
         // Initialize memory manager
         MemoryManager.initialize(this)

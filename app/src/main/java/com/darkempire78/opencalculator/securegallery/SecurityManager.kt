@@ -50,6 +50,8 @@ class SecurityManager(private val context: Context, private val listener: Securi
         }
     }
     
+    fun isMonitoringEnabled(): Boolean = isEnabled
+    
     private fun reset() {
         isFaceDown = false
         consecutiveFaceDownReadings = 0
