@@ -1082,7 +1082,7 @@ class GalleryActivity : AppCompatActivity() {
             // Only trigger security if not already triggered (e.g., by face-down detection)
             if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
                 Log.d("SecureGallery", "onStop: App truly backgrounded - triggering security")
-                TempPinHolder.securityTriggered = true
+                TempPinHolder.triggerSecurity("App backgrounded (onStop)")
             } else if (TempPinHolder.securityTriggered) {
                 Log.d("SecureGallery", "onStop: Security already triggered (probably by face-down) - not setting again")
             } else {
@@ -1095,7 +1095,7 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onRestart() {
         super.onRestart()
-        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}")
+        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}")
         
         // Check if security was triggered - but only if this is truly a restart, not a fresh launch
         if (TempPinHolder.securityTriggered) {
@@ -1192,10 +1192,10 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun closeGalleryForSecurity() {
-        android.util.Log.d("SecureGallery", "closeGalleryForSecurity called, securityTriggered=${TempPinHolder.securityTriggered}")
+        android.util.Log.d("SecureGallery", "closeGalleryForSecurity called, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}")
         if (!TempPinHolder.securityTriggered) {
             android.util.Log.d("SecureGallery", "Security not already triggered, setting flag and finishing activity")
-            TempPinHolder.securityTriggered = true
+            TempPinHolder.triggerSecurity("Gallery security closure")
             // Clear PIN from memory for security - user must re-enter PIN to access gallery again
             TempPinHolder.clear()
             finish() // Close gallery and return to calculator

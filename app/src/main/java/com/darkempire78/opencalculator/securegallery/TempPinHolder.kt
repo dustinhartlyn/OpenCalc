@@ -3,14 +3,25 @@ package com.darkempire78.opencalculator.securegallery
 // Holds pin in memory only while gallery is open
 object TempPinHolder {
     var pin: String? = null
-    var securityTriggered: Boolean = false
+    private var securityTriggerCount: Int = 0
+    
+    // Public read-only property for backward compatibility
+    val securityTriggered: Boolean
+        get() = securityTriggerCount > 0
     
     fun clear() { 
         pin = null
-        securityTriggered = false
+        securityTriggerCount = 0
     }
     
     fun clearSecurityTrigger() {
-        securityTriggered = false
+        securityTriggerCount = 0
     }
+    
+    fun triggerSecurity(reason: String) {
+        securityTriggerCount++
+        android.util.Log.d("TempPinHolder", "Security triggered: $reason (count: $securityTriggerCount)")
+    }
+    
+    fun getSecurityTriggerCount(): Int = securityTriggerCount
 }
