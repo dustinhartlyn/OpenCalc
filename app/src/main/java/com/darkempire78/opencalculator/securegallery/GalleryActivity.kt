@@ -1436,11 +1436,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             
             override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
                 super.onViewRecycled(holder)
-                // Unmark bitmap as active when view is recycled
-                val cacheKey = holder.cacheKey
-                if (cacheKey != null) {
-                    memoryManager.unmarkBitmapActive(cacheKey)
-                }
+                // Clean up ViewHolder properly
+                holder.cleanup()
             }
         }
         
@@ -1686,16 +1683,18 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             val playIcon = itemView.findViewById<android.widget.ImageView>(R.id.playIcon)
             val durationText = itemView.findViewById<android.widget.TextView>(R.id.videoDuration)
             
-            // Recycle previous bitmap to free memory
-            currentBitmap?.let { oldBitmap ->
-                if (!oldBitmap.isRecycled) {
-                    oldBitmap.recycle()
-                }
+            // Unmark previous bitmap as no longer active in this ViewHolder
+            cacheKey?.let { oldKey ->
+                MemoryManager.unmarkBitmapActive(oldKey)
             }
             currentBitmap = null
             
-            if (mediaThumbnail?.bitmap != null) {
+            if (mediaThumbnail?.bitmap != null && !mediaThumbnail.bitmap.isRecycled) {
                 currentBitmap = mediaThumbnail.bitmap
+                // Mark this bitmap as active to prevent recycling while displayed
+                cacheKey?.let { key ->
+                    MemoryManager.markBitmapActive(key, mediaThumbnail.bitmap)
+                }
                 imageView.setImageBitmap(mediaThumbnail.bitmap)
             } else {
                 imageView.setImageResource(android.R.drawable.ic_menu_gallery)
@@ -1737,12 +1736,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         }
         
         fun cleanup() {
-            currentBitmap?.let { bitmap ->
-                if (!bitmap.isRecycled) {
-                    bitmap.recycle()
-                }
+            // Unmark bitmap as no longer active in this ViewHolder
+            cacheKey?.let { key ->
+                MemoryManager.unmarkBitmapActive(key)
             }
             currentBitmap = null
+            cacheKey = null
         }
     }
     
@@ -2043,11 +2042,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             
             override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
                 super.onViewRecycled(holder)
-                // Unmark bitmap as active when view is recycled
-                val cacheKey = holder.cacheKey
-                if (cacheKey != null) {
-                    memoryManager.unmarkBitmapActive(cacheKey)
-                }
+                // Clean up ViewHolder properly
+                holder.cleanup()
             }
         }
         
