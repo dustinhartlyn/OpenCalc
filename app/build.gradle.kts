@@ -21,6 +21,11 @@ android {
         // Performance optimizations
         vectorDrawables.useSupportLibrary = true
         multiDexEnabled = false
+        
+        // Memory management for secure gallery
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     buildTypes {
@@ -44,6 +49,9 @@ android {
             // Optimize debug builds for better performance during development
             isMinifyEnabled = false
             isShrinkResources = false
+            
+            // Increase memory for secure gallery development
+            buildConfigField("boolean", "ENABLE_MEMORY_LOGGING", "true")
         }
     }
 
@@ -103,4 +111,12 @@ dependencies {
     // PhotoView for zoom and pan functionality
     implementation("com.github.chrisbanes:PhotoView:2.3.0")
     implementation("androidx.viewpager2:viewpager2:1.0.0")
+    
+    // Coroutines for secure gallery memory management
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    
+    // ExoPlayer for video streaming (lightweight alternative)
+    implementation("com.google.android.exoplayer:exoplayer-core:2.19.1")
+    implementation("com.google.android.exoplayer:exoplayer-ui:2.19.1")
 }
