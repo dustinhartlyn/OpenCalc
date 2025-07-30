@@ -357,7 +357,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 thumbnailCache.remove(oldestKey)
             }
             // Mark new bitmap as active
-            memoryManager.markBitmapActive(cacheKey, thumbnail.bitmap)
+            if (thumbnail.bitmap != null) {
+                memoryManager.markBitmapActive(cacheKey, thumbnail.bitmap)
+            }
             thumbnailCache[cacheKey] = thumbnail
         }
         
@@ -429,8 +431,14 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                 )
                             }
                             
+                            // ThumbnailGenerator returns the path to cached thumbnail, 
+                            // so we need to load the actual bitmap for display
                             if (thumbnailPath != null) {
-                                VideoUtils.generateVideoThumbnailFromFile(File(thumbnailPath), key!!)
+                                val cachedThumbnail = VideoUtils.loadCachedThumbnail(this, mediaItem)
+                                cachedThumbnail ?: VideoUtils.generateVideoThumbnailFromFile(
+                                    if (mediaItem.usesExternalStorage()) mediaItem.filePath!! else thumbnailPath, 
+                                    key!!
+                                )
                             } else {
                                 null
                             }
@@ -657,7 +665,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                                     filePath, 
                                     mediaItem.id.toString(), 
                                     galleryName, 
-                                    key
+                                    key!!
                                 )
                                 
                                 if (thumbnailPath != null) {
@@ -1829,7 +1837,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     MediaType.VIDEO -> {
                         try {
                             val thumbnail = if (mediaItem.usesExternalStorage()) {
-                                VideoUtils.generateVideoThumbnailFromFile(File(mediaItem.filePath!!), key)
+                                VideoUtils.generateVideoThumbnailFromFile(mediaItem.filePath!!, key)
                             } else {
                                 // For internal storage, decrypt and generate thumbnail
                                 val encryptedData = mediaItem.getEncryptedData()
