@@ -1063,18 +1063,24 @@ class MainActivity : AppCompatActivity() {
                 android.util.Log.d("SecureGallery", "After clearSecurityTrigger - triggered=${com.darkempire78.opencalculator.securegallery.TempPinHolder.securityTriggered}, count=${com.darkempire78.opencalculator.securegallery.TempPinHolder.getSecurityTriggerCount()}")
                 android.util.Log.d("SecureGallery", "About to launch GalleryActivity...")
                 
-                // Removed toast: Gallery unlocked!
                 // Clear calculator display as if "AC" was pressed
                 clearButton(view)
                 // Reset failed attempts and lockout
                 failedPinAttempts = 0
                 pinLockoutEndTime = 0L
-                // Launch GalleryActivity to show notes/photos
-                val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
-                intent.putExtra("gallery_name", gallery.name)
-                android.util.Log.d("SecureGallery", "Starting GalleryActivity intent...")
-                startActivity(intent)
-                android.util.Log.d("SecureGallery", "GalleryActivity intent started!")
+                
+                // Add a small delay to let the system settle after PIN entry
+                // This prevents immediate screen-off issues that can occur right after authentication
+                android.util.Log.d("SecureGallery", "Adding 200ms delay before launching gallery...")
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    android.util.Log.d("SecureGallery", "Delay completed, starting GalleryActivity intent...")
+                    // Launch GalleryActivity to show notes/photos
+                    val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
+                    intent.putExtra("gallery_name", gallery.name)
+                    android.util.Log.d("SecureGallery", "Starting GalleryActivity intent...")
+                    startActivity(intent)
+                    android.util.Log.d("SecureGallery", "GalleryActivity intent started!")
+                }, 200) // 200ms delay
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
                 failedPinAttempts++

@@ -84,6 +84,7 @@ class GalleryActivity : AppCompatActivity() {
     private var isMediaViewerActive = false
     private var isRecreating = false
     private var securityStartTime = 0L
+    private lateinit var resumeTime: Long
     
     // Gallery loading progress
     private var galleryLoadingIndicator: android.widget.ProgressBar? = null
@@ -1060,8 +1061,15 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onPause() {
+        val timeSinceResume = if (this::resumeTime.isInitialized) System.currentTimeMillis() - resumeTime else -1
         android.util.Log.d("SecureGallery", "=== GalleryActivity onPause() ===")
+        android.util.Log.d("SecureGallery", "onPause: Time since resume: ${timeSinceResume}ms")
         android.util.Log.d("SecureGallery", "onPause: About to pause activity (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+        android.util.Log.d("SecureGallery", "onPause: Checking if this is an unexpected early pause...")
+        
+        if (timeSinceResume in 0..1000) {
+            android.util.Log.w("SecureGallery", "WARNING: Gallery paused very quickly after resume (${timeSinceResume}ms) - this may indicate a system issue")
+        }
         
         super.onPause()
         
@@ -1134,6 +1142,7 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onResume() {
+        resumeTime = System.currentTimeMillis()
         android.util.Log.d("SecureGallery", "=== GalleryActivity onResume() ===")
         android.util.Log.d("SecureGallery", "onResume: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
         
@@ -1249,8 +1258,12 @@ class GalleryActivity : AppCompatActivity() {
         android.util.Log.d("SecureGallery", "onCreate: setContentView completed")
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        android.util.Log.d("SecureGallery", "onCreate: Screen keep-on flag set for gallery")
+        window.addFlags(
+            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
+            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+            android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+        )
+        android.util.Log.d("SecureGallery", "onCreate: Screen management flags set for gallery")
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
