@@ -47,7 +47,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     }
 
     // Memory manager for bitmap lifecycle tracking
-    private lateinit var memoryManager: MemoryManager
+    private val memoryManager = MemoryManager
 
     // Data class for media thumbnails
     data class MediaThumbnail(
@@ -1184,7 +1184,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         GalleryManager.setContext(this)
         
         // Initialize memory manager
-        memoryManager = MemoryManager(this)
+        MemoryManager.initialize(this)
         
         // Initialize security features
         initializeSecurity()
