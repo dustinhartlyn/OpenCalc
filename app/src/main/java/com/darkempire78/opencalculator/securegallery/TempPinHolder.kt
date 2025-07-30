@@ -4,6 +4,7 @@ package com.darkempire78.opencalculator.securegallery
 object TempPinHolder {
     var pin: String? = null
     private var securityTriggerCount: Int = 0
+    private var lastClearTime: Long = 0L
     
     // Public read-only property for backward compatibility
     val securityTriggered: Boolean
@@ -16,6 +17,12 @@ object TempPinHolder {
     
     fun clearSecurityTrigger() {
         securityTriggerCount = 0
+        lastClearTime = System.currentTimeMillis()
+        android.util.Log.d("TempPinHolder", "Security trigger cleared at $lastClearTime")
+    }
+    
+    fun wasRecentlyCleared(): Boolean {
+        return System.currentTimeMillis() - lastClearTime < 3000 // Within last 3 seconds
     }
     
     fun triggerSecurity(reason: String) {

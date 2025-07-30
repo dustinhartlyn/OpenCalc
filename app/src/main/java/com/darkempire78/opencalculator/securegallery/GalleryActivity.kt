@@ -1095,13 +1095,18 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onRestart() {
         super.onRestart()
-        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}")
+        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
         
-        // Check if security was triggered - but only if this is truly a restart, not a fresh launch
-        if (TempPinHolder.securityTriggered) {
-            Log.d("SecureGallery", "onRestart: Security triggered detected - closing gallery")
+        // IMPORTANT: onRestart() can be called during normal activity launch after PIN entry
+        // We should NOT close the gallery here if the security trigger was recently cleared (PIN just validated)
+        
+        if (TempPinHolder.securityTriggered && !TempPinHolder.wasRecentlyCleared()) {
+            // Only close if security is triggered AND it wasn't recently cleared by PIN validation
+            Log.d("SecureGallery", "onRestart: Security triggered and not recently cleared - closing gallery")
             finish()
             return
+        } else if (TempPinHolder.securityTriggered && TempPinHolder.wasRecentlyCleared()) {
+            Log.d("SecureGallery", "onRestart: Security triggered but was recently cleared by PIN validation - ignoring")
         } else {
             Log.d("SecureGallery", "onRestart: No security trigger, proceeding normally")
         }
