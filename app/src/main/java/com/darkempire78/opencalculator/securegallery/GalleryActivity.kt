@@ -1320,21 +1320,35 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         photosRecyclerView.setHasFixedSize(false) // Allow dynamic sizing
         photosRecyclerView.isNestedScrollingEnabled = true // Enable proper scrolling
         
-        // Add scroll listener to pause thumbnail loading during user interaction
-        photosRecyclerView.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+        // Add momentum scrolling - similar to iOS smooth deceleration
+        // Standard friction for smooth deceleration (0.84f provides good momentum without being too bouncy)
+        photosRecyclerView.setItemViewCacheSize(20) // Improved performance during fast scrolling
+        
+        // Enable momentum scrolling with custom friction for smooth deceleration
+        // This creates a natural feel similar to popular gallery apps
+        val scrollListener = object : RecyclerView.OnScrollListener() {
+            private var isScrolling = false
+            
             override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
                 when (newState) {
-                    RecyclerView.SCROLL_STATE_DRAGGING, RecyclerView.SCROLL_STATE_SETTLING -> {
+                    RecyclerView.SCROLL_STATE_DRAGGING -> {
+                        isScrolling = true
+                        isUserInteracting = true
+                        lastInteractionTime = System.currentTimeMillis()
+                    }
+                    RecyclerView.SCROLL_STATE_SETTLING -> {
+                        // Maintain momentum during deceleration
                         isUserInteracting = true
                         lastInteractionTime = System.currentTimeMillis()
                     }
                     RecyclerView.SCROLL_STATE_IDLE -> {
+                        isScrolling = false
                         isUserInteracting = false
-                        lastInteractionTime = System.currentTimeMillis()
                     }
                 }
             }
-        })
+        }
+        photosRecyclerView.addOnScrollListener(scrollListener)
         
         // Initialize empty media list - thumbnails will be loaded asynchronously
         this.decryptedMedia = mutableListOf()

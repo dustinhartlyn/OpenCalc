@@ -6,6 +6,8 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
+import android.view.GestureDetector
+import android.view.MotionEvent
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -13,6 +15,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.darkempire78.opencalculator.R
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.abs
 
 class SecureMediaViewerActivity : AppCompatActivity() {
     
@@ -26,6 +29,7 @@ class SecureMediaViewerActivity : AppCompatActivity() {
     private lateinit var adapter: SecureMediaPagerAdapter
     private var media: List<SecureMedia> = listOf()
     private var currentPosition = 0
+    private lateinit var gestureDetector: GestureDetector
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -80,6 +84,43 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         adapter = SecureMediaPagerAdapter(this, media, galleryPin, gallerySalt)
         mediaViewPager.adapter = adapter
         mediaViewPager.setCurrentItem(currentPosition, false)
+        
+        // Setup swipe down gesture to close media viewer (instead of edge swipe)
+        gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onFling(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                velocityX: Float,
+                velocityY: Float
+            ): Boolean {
+                if (e1 == null) return false
+                
+                val deltaY = e2.y - e1.y
+                val deltaX = e2.x - e1.x
+                
+                // Check for downward swipe with sufficient velocity and distance
+                // Minimum swipe distance: 100dp, minimum velocity: 600dp/s
+                val minSwipeDistance = 100 * resources.displayMetrics.density
+                val minSwipeVelocity = 600 * resources.displayMetrics.density
+                
+                // Ensure it's more vertical than horizontal (prevents conflicts with horizontal swipes)
+                if (deltaY > minSwipeDistance && 
+                    velocityY > minSwipeVelocity && 
+                    abs(deltaY) > abs(deltaX) * 1.5) {
+                    
+                    Log.d("SecureMediaViewer", "Swipe down detected - closing media viewer")
+                    finish()
+                    return true
+                }
+                return false
+            }
+        })
+        
+        // Apply gesture detection to the entire media viewer area
+        mediaViewPager.setOnTouchListener { _, event ->
+            gestureDetector.onTouchEvent(event)
+            false // Don't consume the event, let ViewPager handle normal swipes
+        }
         
         // Handle page changes
         mediaViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
