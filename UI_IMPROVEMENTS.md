@@ -31,19 +31,21 @@ The encrypted thumbnail system is fully operational and secure:
 - Enhanced item view cache size for better performance during momentum scrolling
 - Maintains thumbnail loading optimization during scroll interactions
 
-### 2. Swipe Down to Close Media Viewer ✅ IMPLEMENTED
+### 2. Swipe Down to Close Media Viewer ✅ IMPROVED
 
-**Feature**: Replaced edge swipe with intuitive swipe down gesture to close enlarged media
-- **Gesture Detection**: Custom GestureDetector with fling detection
-- **Sensitivity**: Calibrated thresholds (100dp distance, 600dp/s velocity)
-- **Conflict Prevention**: Ensures vertical swipes don't interfere with horizontal media navigation
-- **Natural Feel**: Similar to modern photo/video apps (Instagram, Photos, etc.)
+**Feature**: Enhanced swipe down gesture to support both fast and slow swipes
+- **Dual Detection**: Handles both fast flings and slow deliberate swipes
+- **Reduced Thresholds**: Lower sensitivity for better accessibility
+- **Progressive Detection**: Real-time tracking during swipe movement
+- **Natural Feel**: Works like modern photo/video apps with any swipe speed
 
 **Technical Details**:
-- Minimum swipe distance: 100dp (density-independent)
-- Minimum velocity: 600dp/s
-- Directional validation: Vertical movement must be 1.5x greater than horizontal
-- Non-consuming touch listener: Preserves normal ViewPager2 functionality
+- **Fast Swipes**: 80dp distance, 400dp/s velocity (reduced from 100dp/600dp/s)
+- **Slow Swipes**: 120dp minimum distance with progressive detection
+- **Directional validation**: Vertical movement must be 1.2x greater than horizontal
+- **Real-time tracking**: `onScroll()` detects movement during swipe
+- **Completion detection**: `ACTION_UP` handles slow swipe completion
+- **Non-consuming**: Preserves all ViewPager2 horizontal navigation
 
 ## Performance Optimizations
 

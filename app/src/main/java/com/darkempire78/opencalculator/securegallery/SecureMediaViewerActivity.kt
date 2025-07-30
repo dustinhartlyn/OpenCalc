@@ -85,7 +85,11 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         mediaViewPager.adapter = adapter
         mediaViewPager.setCurrentItem(currentPosition, false)
         
-        // Setup swipe down gesture to close media viewer (instead of edge swipe)
+        // Setup swipe down gesture to close media viewer (supports both fast and slow swipes)
+        var startY = 0f
+        var startX = 0f
+        var isDownwardSwipe = false
+        
         gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
             override fun onFling(
                 e1: MotionEvent?,
@@ -98,26 +102,69 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                 val deltaY = e2.y - e1.y
                 val deltaX = e2.x - e1.x
                 
-                // Check for downward swipe with sufficient velocity and distance
-                // Minimum swipe distance: 100dp, minimum velocity: 600dp/s
-                val minSwipeDistance = 100 * resources.displayMetrics.density
-                val minSwipeVelocity = 600 * resources.displayMetrics.density
+                // Check for fast downward swipe
+                val minSwipeDistance = 80 * resources.displayMetrics.density // Reduced from 100dp
+                val minSwipeVelocity = 400 * resources.displayMetrics.density // Reduced from 600dp/s
                 
                 // Ensure it's more vertical than horizontal (prevents conflicts with horizontal swipes)
                 if (deltaY > minSwipeDistance && 
                     velocityY > minSwipeVelocity && 
-                    abs(deltaY) > abs(deltaX) * 1.5) {
+                    abs(deltaY) > abs(deltaX) * 1.2) { // Reduced ratio from 1.5 to 1.2
                     
-                    Log.d("SecureMediaViewer", "Swipe down detected - closing media viewer")
+                    Log.d("SecureMediaViewer", "Fast swipe down detected - closing media viewer")
                     finish()
                     return true
                 }
                 return false
             }
+            
+            override fun onScroll(
+                e1: MotionEvent?,
+                e2: MotionEvent,
+                distanceX: Float,
+                distanceY: Float
+            ): Boolean {
+                // Handle slower swipes through scroll detection
+                if (e1 == null) return false
+                
+                val deltaY = e2.y - e1.y
+                val deltaX = e2.x - e1.x
+                
+                // Check if this is a significant downward movement
+                if (deltaY > 50 * resources.displayMetrics.density && // Minimum 50dp movement
+                    abs(deltaY) > abs(deltaX) * 1.2) { // More vertical than horizontal
+                    isDownwardSwipe = true
+                    Log.d("SecureMediaViewer", "Slow swipe down in progress: deltaY=$deltaY")
+                }
+                
+                return false
+            }
         })
         
-        // Apply gesture detection to the entire media viewer area
+        // Apply gesture detection with custom touch handling for slow swipes
         mediaViewPager.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    startY = event.y
+                    startX = event.x
+                    isDownwardSwipe = false
+                }
+                MotionEvent.ACTION_UP -> {
+                    val deltaY = event.y - startY
+                    val deltaX = event.x - startX
+                    
+                    // Handle slow swipe completion
+                    if (isDownwardSwipe || 
+                        (deltaY > 120 * resources.displayMetrics.density && // 120dp minimum for slow swipes
+                         abs(deltaY) > abs(deltaX) * 1.2)) {
+                        
+                        Log.d("SecureMediaViewer", "Slow swipe down completed - closing media viewer")
+                        finish()
+                        return@setOnTouchListener true
+                    }
+                }
+            }
+            
             gestureDetector.onTouchEvent(event)
             false // Don't consume the event, let ViewPager handle normal swipes
         }
