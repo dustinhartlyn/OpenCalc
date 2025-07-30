@@ -294,7 +294,7 @@ class SecureVideoManager(private val context: Context) {
             val tempFile = createTempVideoFile(videoId)
             
             // Start streaming decryption in background
-            launch {
+            cleanupScope.launch {
                 streamDecryptVideo(encryptedFile, encryptionKey, tempFile)
             }
             
@@ -426,7 +426,7 @@ class SecureVideoManager(private val context: Context) {
      */
     private fun startTempFileCleanup() {
         cleanupScope.launch {
-            while (isActive) {
+            while (cleanupScope.isActive) {
                 delay(60000) // Run every minute
                 
                 try {

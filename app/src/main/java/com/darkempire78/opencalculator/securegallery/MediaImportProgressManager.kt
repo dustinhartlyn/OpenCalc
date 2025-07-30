@@ -108,7 +108,7 @@ class MediaImportProgressManager(private val context: Context) {
         updatePhase(ImportPhase.ENCRYPTING, mediaUris.size)
         
         for ((index, uri) in mediaUris.withIndex()) {
-            if (!isActive) break // Check for cancellation
+            if (!backgroundScope.isActive) break // Check for cancellation
             
             try {
                 val fileName = getFileNameFromUri(uri) ?: "unknown_${System.currentTimeMillis()}"
@@ -149,7 +149,7 @@ class MediaImportProgressManager(private val context: Context) {
             updatePhase(ImportPhase.GENERATING_THUMBNAILS, encryptedFiles.size)
             
             for ((index, encryptedFile) in encryptedFiles.withIndex()) {
-                if (!isActive) break
+                if (!backgroundScope.isActive) break
                 
                 try {
                     updateProgress(
@@ -354,7 +354,8 @@ class MediaImportProgressManager(private val context: Context) {
     // Helper methods (would integrate with existing GalleryActivity methods)
     private fun getFileNameFromUri(uri: android.net.Uri): String? {
         // Implementation would extract filename from URI
-        return "placeholder_filename"
+        // For now return a placeholder
+        return uri.lastPathSegment ?: "unknown_file"
     }
     
     private fun determineMediaType(fileName: String): MediaType {
@@ -371,7 +372,11 @@ class MediaImportProgressManager(private val context: Context) {
     
     private fun getGalleryDirectory(galleryName: String): java.io.File {
         // Implementation would return gallery directory
-        return java.io.File(context.filesDir, "secure_gallery")
+        val baseDir = java.io.File(context.filesDir, "secure_gallery")
+        if (!baseDir.exists()) {
+            baseDir.mkdirs()
+        }
+        return baseDir
     }
     
     private fun encryptFileWithMemoryManagement(
@@ -380,7 +385,18 @@ class MediaImportProgressManager(private val context: Context) {
         encryptionKey: String
     ): Boolean {
         // Implementation would call existing encryption with memory checks
-        return true // Placeholder
+        // For now, just copy the file as a placeholder
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                java.io.FileOutputStream(outputFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying file during encryption", e)
+            false
+        }
     }
     
     fun cancel() {

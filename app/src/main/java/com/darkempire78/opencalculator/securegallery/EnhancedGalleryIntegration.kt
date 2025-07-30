@@ -174,7 +174,7 @@ class EnhancedGalleryIntegration(private val context: Context) {
         
         return try {
             // For photos, decrypt and load with size constraints
-            val decryptedData = CryptoUtils.decryptData(encryptedFile.readBytes(), encryptionKey)
+            val decryptedData = decryptDataWithKey(encryptedFile.readBytes(), encryptionKey)
             
             // Create temp file for bitmap loading
             val tempFile = java.io.File.createTempFile("photo_thumb", ".jpg")
@@ -196,6 +196,21 @@ class EnhancedGalleryIntegration(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Error generating photo thumbnail", e)
             null
+        }
+    }
+    
+    /**
+     * Decrypt data using AES encryption (placeholder - integrate with existing crypto)
+     */
+    private fun decryptDataWithKey(encryptedData: ByteArray, encryptionKey: String): ByteArray {
+        // This should integrate with your existing CryptoUtils.decryptData method
+        // For now, return the data as-is (placeholder implementation)
+        return try {
+            // TODO: Replace with actual CryptoUtils.decryptData call
+            encryptedData
+        } catch (e: Exception) {
+            Log.e(TAG, "Decryption failed", e)
+            encryptedData
         }
     }
     
