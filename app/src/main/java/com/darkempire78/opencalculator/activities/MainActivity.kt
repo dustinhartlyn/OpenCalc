@@ -50,6 +50,7 @@ import com.darkempire78.opencalculator.databinding.ActivityMainBinding
 import com.darkempire78.opencalculator.dialogs.DonationDialog
 import com.darkempire78.opencalculator.history.History
 import com.darkempire78.opencalculator.history.HistoryAdapter
+import com.darkempire78.opencalculator.utils.PerformanceOptimizer
 import com.sothree.slidinguppanel.PanelSlideListener
 import com.sothree.slidinguppanel.PanelState
 import kotlinx.coroutines.Dispatchers
@@ -354,10 +355,17 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                updateResultDisplay()
-                textSizeAdjuster.adjustTextSize(binding.input,
-                    TextSizeAdjuster.AdjustableTextType.Input
-                )
+                // Use debouncing to reduce calculation frequency
+                com.darkempire78.opencalculator.utils.PerformanceOptimizer.debounce(lifecycleScope) {
+                    updateResultDisplay()
+                }
+                
+                // Optimize text size adjustment
+                com.darkempire78.opencalculator.utils.PerformanceOptimizer.batchUIUpdate {
+                    textSizeAdjuster.adjustTextSize(binding.input,
+                        TextSizeAdjuster.AdjustableTextType.Input
+                    )
+                }
             }
 
             override fun afterTextChanged(s: Editable?) {
@@ -373,9 +381,13 @@ class MainActivity : AppCompatActivity() {
             }
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                textSizeAdjuster.adjustTextSize(binding.resultDisplay,
-                    TextSizeAdjuster.AdjustableTextType.Output
-                )
+                // Batch text size adjustments to reduce UI thrashing
+                com.darkempire78.opencalculator.utils.PerformanceOptimizer.batchUIUpdate {
+                    textSizeAdjuster.adjustTextSize(binding.resultDisplay,
+                        TextSizeAdjuster.AdjustableTextType.Output
+                    )
+                }
+            }
             }
 
             override fun afterTextChanged(s: Editable?) {
@@ -549,14 +561,17 @@ class MainActivity : AppCompatActivity() {
             val formerValue = binding.input.text.toString()
             val cursorPosition = binding.input.selectionStart
             val leftValue = formerValue.subSequence(0, cursorPosition).toString()
-            val leftValueFormatted =
-                NumberFormatter.format(leftValue, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
             val rightValue = formerValue.subSequence(cursorPosition, formerValue.length).toString()
 
             val newValue = leftValue + value + rightValue
 
-            val newValueFormatted =
+            // Only format if necessary to improve performance
+            val needsFormatting = PerformanceOptimizer.needsFormatting(newValue, groupingSeparatorSymbol)
+            val newValueFormatted = if (needsFormatting) {
                 NumberFormatter.format(newValue, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
+            } else {
+                newValue
+            }
 
             withContext(Dispatchers.Main) {
                 // Update Display
@@ -567,6 +582,13 @@ class MainActivity : AppCompatActivity() {
                     val cursorOffset = newValueFormatted.length - newValue.length
                     binding.input.setSelection(cursorPosition + value.length + cursorOffset)
                 } else {
+                    // Only format left value if necessary for better performance
+                    val leftValueFormatted = if (PerformanceOptimizer.needsFormatting(leftValue, groupingSeparatorSymbol)) {
+                        NumberFormatter.format(leftValue, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
+                    } else {
+                        leftValue
+                    }
+                    
                     val desiredCursorPosition = leftValueFormatted.length + value.length
                     // Limit the cursor position to the length of the input
                     val safeCursorPosition = desiredCursorPosition.coerceAtMost(binding.input.text.length)
@@ -646,7 +668,18 @@ class MainActivity : AppCompatActivity() {
 
             val calculation = binding.input.text.toString()
 
-            if (calculation != "") {
+            if (calculation.isNotEmpty()) {
+                // Check cache first to avoid redundant calculations
+                val cacheKey = "$calculation:$isDegreeModeActivated:${MyPreferences(this@MainActivity).numberPrecision}"
+                val cachedResult = PerformanceOptimizer.getCachedResult(cacheKey)
+                
+                if (cachedResult != null) {
+                    withContext(Dispatchers.Main) {
+                        binding.resultDisplay.text = cachedResult
+                    }
+                    return@launch
+                }
+
                 division_by_0 = false
                 domain_error = false
                 syntax_error = false
@@ -654,7 +687,7 @@ class MainActivity : AppCompatActivity() {
                 require_real_number = false
 
                 val calculationTmp = Expression().getCleanExpression(
-                    binding.input.text.toString(),
+                    calculation,
                     decimalSeparatorSymbol,
                     groupingSeparatorSymbol
                 )
@@ -700,12 +733,13 @@ class MainActivity : AppCompatActivity() {
                         }
                     }
 
+                    val finalFormattedResult = if (formattedResult != calculation) formattedResult else ""
+                    
+                    // Cache the result for future use
+                    PerformanceOptimizer.cacheResult(cacheKey, finalFormattedResult)
+                    
                     withContext(Dispatchers.Main) {
-                        if (formattedResult != calculation) {
-                            binding.resultDisplay.text = formattedResult
-                        } else {
-                            binding.resultDisplay.text = ""
-                        }
+                        binding.resultDisplay.text = finalFormattedResult
                     }
 
                     // Save to history if the option autoSaveCalculationWithoutEqualButton is enabled
@@ -1452,6 +1486,18 @@ class MainActivity : AppCompatActivity() {
 
         // Disable the keyboard on display EditText
         binding.input.showSoftInputOnFocus = false
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Clear caches to free memory when app is paused
+        PerformanceOptimizer.clearCache()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Clear all caches on destroy
+        PerformanceOptimizer.clearCache()
     }
 
     fun checkEmptyHistoryForNoHistoryLabel() {

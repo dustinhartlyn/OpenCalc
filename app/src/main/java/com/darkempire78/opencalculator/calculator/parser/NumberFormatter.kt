@@ -1,24 +1,44 @@
 package com.darkempire78.opencalculator.calculator.parser
 
 object NumberFormatter {
+    // Cache for formatted results to avoid repeated formatting
+    private val formatCache = mutableMapOf<String, String>()
+    private const val MAX_CACHE_SIZE = 50
+    
     fun format(
         text: String,
         decimalSeparatorSymbol: String,
         groupingSeparatorSymbol: String,
         numberingSystem: NumberingSystem = NumberingSystem.INTERNATIONAL
     ): String {
+        // Quick return for empty or very short strings
+        if (text.length <= 3) return text
+        
+        // Check cache first
+        val cacheKey = "$text:$decimalSeparatorSymbol:$groupingSeparatorSymbol:$numberingSystem"
+        formatCache[cacheKey]?.let { return it }
+        
         val textNoSeparator = removeSeparators(text, groupingSeparatorSymbol)
         val numbersList = extractString(textNoSeparator, decimalSeparatorSymbol)
         val numbersWithSeparators =
             addSeparators(numbersList, decimalSeparatorSymbol, groupingSeparatorSymbol, numberingSystem)
 
-        val newString = StringBuilder()
+        // Use StringBuilder with initial capacity for better performance
+        val newString = StringBuilder(text.length + numbersList.size * 2)
 
         for (item in numbersWithSeparators) {
             newString.append(item)
         }
 
-        return newString.toString()
+        val result = newString.toString()
+        
+        // Cache the result
+        if (formatCache.size >= MAX_CACHE_SIZE) {
+            formatCache.clear() // Simple cache eviction
+        }
+        formatCache[cacheKey] = result
+        
+        return result
     }
 
     // This function was changed to extract all elements from the input string, not just numbers.

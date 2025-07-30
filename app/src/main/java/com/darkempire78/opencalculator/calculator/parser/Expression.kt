@@ -25,21 +25,24 @@ class Expression {
     }
 
     private fun replaceSymbolsFromCalculation(calculation: String, decimalSeparatorSymbol: String, groupingSeparatorSymbol: String): String {
-        var calculation2 = calculation.replace('×', '*')
-        calculation2 = calculation2.replace('÷', '/')
-        calculation2 = calculation2.replace("log₂(", "logtwo(")
-        // Need open parenthesis to prevent alteration of log₂
-        calculation2 = calculation2.replace("log(", "logten(")
-        calculation2 = calculation2.replace("E", "*10^")
-        // To avoid that "exp" is interpreted as "e", exp -> xp
-        calculation2 = calculation2.replace("exp", "xp")
-        // To avoid missmatch with cos, sin, tan -> arcco, arcsi, arcta
-        calculation2 = calculation2.replace("cos⁻¹", "arcco")
-        calculation2 = calculation2.replace("sin⁻¹", "arcsi")
-        calculation2 = calculation2.replace("tan⁻¹", "arcta")
-        calculation2 = calculation2.replace(groupingSeparatorSymbol, "")
-        calculation2 = calculation2.replace(decimalSeparatorSymbol, ".")
-        return calculation2
+        // Use optimized string replacement for better performance
+        val replacements = mapOf(
+            "×" to "*",
+            "÷" to "/", 
+            "log₂(" to "logtwo(",
+            "log(" to "logten(",
+            "E" to "*10^",
+            "exp" to "xp",
+            "cos⁻¹" to "arcco",
+            "sin⁻¹" to "arcsi", 
+            "tan⁻¹" to "arcta",
+            groupingSeparatorSymbol to "",
+            decimalSeparatorSymbol to "."
+        )
+        
+        return com.darkempire78.opencalculator.utils.PerformanceOptimizer.optimizedStringReplace(
+            calculation, replacements
+        )
     }
 
     /* Transform any calculation string containing %

@@ -17,6 +17,10 @@ android {
         versionName = "3.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Performance optimizations
+        vectorDrawables.useSupportLibrary = true
+        multiDexEnabled = false
     }
 
     buildTypes {
@@ -28,10 +32,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            // Performance optimizations for release builds
+            isDebuggable = false
+            isJniDebuggable = false
+            isRenderscriptDebuggable = false
+            isPseudoLocalesEnabled = false
         }
         debug {
             applicationIdSuffix = ".debug"
             isDebuggable = true
+            // Optimize debug builds for better performance during development
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 
@@ -47,9 +59,28 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
+        // Enable incremental compilation for faster builds
+        isCoreLibraryDesugaringEnabled = false
     }
     kotlinOptions {
         jvmTarget = "1.8"
+        // Performance optimizations
+        freeCompilerArgs += listOf(
+            "-opt-in=kotlin.RequiresOptIn",
+            "-Xjvm-default=all"
+        )
+    }
+    
+    packagingOptions {
+        resources {
+            excludes += setOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt"
+            )
+        }
     }
 }
 

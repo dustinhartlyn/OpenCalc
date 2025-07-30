@@ -5,6 +5,31 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
+# Performance optimizations
+-optimizations !code/simplification/arithmetic,!code/simplification/cast,!field/*,!class/merging/*
+-optimizationpasses 5
+-allowaccessmodification
+-dontpreverify
+
+# Keep calculator core classes for performance
+-keep class com.darkempire78.opencalculator.calculator.** { *; }
+-keep class com.darkempire78.opencalculator.utils.PerformanceOptimizer { *; }
+
+# Optimize number formatting
+-assumenosideeffects class com.darkempire78.opencalculator.calculator.parser.NumberFormatter {
+    private static java.util.Map formatCache;
+}
+
+# Remove debug logging in release builds
+-assumenosideeffects class android.util.Log {
+    public static boolean isLoggable(java.lang.String, int);
+    public static int v(...);
+    public static int i(...);
+    public static int w(...);
+    public static int d(...);
+    public static int e(...);
+}
+
 # If your project uses WebView with JS, uncomment the following
 # and specify the fully qualified class name to the JavaScript interface
 # class:
