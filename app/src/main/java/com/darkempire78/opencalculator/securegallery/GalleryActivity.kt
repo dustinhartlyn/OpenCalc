@@ -86,7 +86,8 @@ class GalleryActivity : AppCompatActivity() {
     private var securityStartTime = 0L
     
     // Gallery loading progress
-    private var galleryLoadingDialog: android.app.ProgressDialog? = null
+    private var galleryLoadingIndicator: android.widget.ProgressBar? = null
+    private var galleryLoadingText: android.widget.TextView? = null
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -494,17 +495,18 @@ class GalleryActivity : AppCompatActivity() {
     private fun loadInitialThumbnails(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
         android.util.Log.d("SecureGallery", "=== STARTING THUMBNAIL LOADING FOR ${media.size} MEDIA ITEMS ===")
         
-        // Show loading dialog
+        // Show loading indicator in the UI instead of blocking dialog
         if (media.isNotEmpty()) {
-            galleryLoadingDialog = android.app.ProgressDialog(this).apply {
-                setTitle("Loading Gallery")
-                setMessage("Loading thumbnails...")
-                setCancelable(false)
-                setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
-                max = media.size
-                progress = 0
-                show()
-            }
+            val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
+            galleryLoadingIndicator = findViewById<android.widget.ProgressBar>(R.id.loadingProgressBar)
+            galleryLoadingText = findViewById<android.widget.TextView>(R.id.loadingText)
+            
+            loadingContainer?.visibility = android.view.View.VISIBLE
+            galleryLoadingIndicator?.visibility = android.view.View.VISIBLE
+            galleryLoadingText?.visibility = android.view.View.VISIBLE
+            galleryLoadingIndicator?.max = media.size
+            galleryLoadingIndicator?.progress = 0
+            galleryLoadingText?.text = "Loading gallery..."
         }
         
         // Immediately initialize the decryptedMedia list with the correct size
@@ -539,13 +541,9 @@ class GalleryActivity : AppCompatActivity() {
                                 android.util.Log.d("SecureGallery", "✓ Successfully set thumbnail at position $index")
                                 
                                 loadedCount++
-                                // Update progress dialog
-                                galleryLoadingDialog?.let { dialog ->
-                                    if (dialog.isShowing) {
-                                        dialog.progress = loadedCount
-                                        dialog.setMessage("Loading thumbnails ($loadedCount/${media.size})...")
-                                    }
-                                }
+                                // Update loading indicator
+                                galleryLoadingIndicator?.progress = loadedCount
+                                galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
                             } else {
                                 android.util.Log.e("SecureGallery", "✗ Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
                             }
@@ -555,12 +553,8 @@ class GalleryActivity : AppCompatActivity() {
                         runOnUiThread {
                             loadedCount++
                             // Update progress even for failed thumbnails
-                            galleryLoadingDialog?.let { dialog ->
-                                if (dialog.isShowing) {
-                                    dialog.progress = loadedCount
-                                    dialog.setMessage("Loading thumbnails ($loadedCount/${media.size})...")
-                                }
-                            }
+                            galleryLoadingIndicator?.progress = loadedCount
+                            galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
                         }
                     }
                     
@@ -572,12 +566,8 @@ class GalleryActivity : AppCompatActivity() {
                     runOnUiThread {
                         loadedCount++
                         // Update progress even for failed thumbnails
-                        galleryLoadingDialog?.let { dialog ->
-                            if (dialog.isShowing) {
-                                dialog.progress = loadedCount
-                                dialog.setMessage("Loading thumbnails ($loadedCount/${media.size})...")
-                            }
-                        }
+                        galleryLoadingIndicator?.progress = loadedCount
+                        galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
                     }
                 }
             }
@@ -597,15 +587,13 @@ class GalleryActivity : AppCompatActivity() {
                 photosRecyclerView.requestLayout()
                 photosRecyclerView.invalidate()
                 
-                // Dismiss loading dialog AFTER all UI operations are complete
-                galleryLoadingDialog?.let { dialog ->
-                    if (dialog.isShowing) {
-                        dialog.dismiss()
-                    }
-                }
-                galleryLoadingDialog = null
+                // Hide loading indicator AFTER all UI operations are complete
+                val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
+                loadingContainer?.visibility = android.view.View.GONE
+                galleryLoadingIndicator?.visibility = android.view.View.GONE
+                galleryLoadingText?.visibility = android.view.View.GONE
                 
-                android.util.Log.d("SecureGallery", "Forced complete UI refresh and loading dialog dismissed")
+                android.util.Log.d("SecureGallery", "Forced complete UI refresh and loading indicator hidden")
             }
         }
     }
@@ -1053,13 +1041,9 @@ class GalleryActivity : AppCompatActivity() {
         // Clear PIN from memory when gallery is destroyed
         TempPinHolder.clear()
         
-        // Clean up loading dialog
-        galleryLoadingDialog?.let { dialog ->
-            if (dialog.isShowing) {
-                dialog.dismiss()
-            }
-        }
-        galleryLoadingDialog = null
+        // Clean up loading indicator references
+        galleryLoadingIndicator = null
+        galleryLoadingText = null
         
         super.onDestroy()
     }
