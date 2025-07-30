@@ -339,9 +339,21 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             if (thumbnailCache.size >= maxCacheSize) {
                 // Remove oldest entries
                 val oldestKey = thumbnailCache.keys.first()
-                thumbnailCache[oldestKey]?.bitmap?.recycle()
+                val oldThumbnail = thumbnailCache[oldestKey]
+                if (oldThumbnail?.bitmap != null && !oldThumbnail.bitmap.isRecycled) {
+                    // Check if bitmap is still being used by the UI
+                    try {
+                        memoryManager.unmarkBitmapActive(oldestKey)
+                        oldThumbnail.bitmap.recycle()
+                    } catch (e: Exception) {
+                        // Bitmap may still be in use, don't recycle
+                        Log.w(TAG, "Could not recycle bitmap for $oldestKey: ${e.message}")
+                    }
+                }
                 thumbnailCache.remove(oldestKey)
             }
+            // Mark new bitmap as active
+            memoryManager.markBitmapActive(cacheKey, thumbnail.bitmap)
             thumbnailCache[cacheKey] = thumbnail
         }
         
@@ -389,10 +401,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         cachedThumbnail
                     } else {
                         // For videos, use streaming approach to avoid memory issues
-                        if (mediaItem.usesExternalStorage()) {
-                            VideoUtils.generateVideoThumbnailFromFile(mediaItem.filePath!!, key!!)
-                        } else {
-                            VideoUtils.generateVideoThumbnailFromData(mediaItem.getEncryptedData(), key!!)
+                        try {
+                            val secureVideoManager = SecureVideoManager()
+                            secureVideoManager.generateVideoThumbnail(
+                                encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
+                                encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
+                                encryptionKey = key!!
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("SecureGallery", "Failed to generate streaming video thumbnail", e)
+                            null
                         }
                     }
                     val duration = VideoUtils.getVideoDuration(mediaItem, key!!)
@@ -597,19 +615,31 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             }
                         }
                         MediaType.VIDEO -> {
-                            // For videos, we need the raw video bytes to generate thumbnail
-                            val encryptedData = mediaItem.getEncryptedData()
-                            val iv = encryptedData.copyOfRange(0, 16)
-                            val ct = encryptedData.copyOfRange(16, encryptedData.size)
-                            val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
-                            
-                            // Generate encrypted thumbnail for video
-                            val thumbnailPath = ThumbnailGenerator.generateVideoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
-                            if (thumbnailPath != null) {
-                                android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
-                                processedCount++
-                            } else {
-                                android.util.Log.w("SecureGallery", "Failed to generate thumbnail for video: ${mediaItem.name}")
+                            // Use SecureVideoManager for streaming approach instead of loading entire video into memory
+                            try {
+                                val secureVideoManager = SecureVideoManager()
+                                val thumbnailBitmap = secureVideoManager.generateVideoThumbnail(
+                                    encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
+                                    encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
+                                    encryptionKey = key!!
+                                )
+                                
+                                if (thumbnailBitmap != null) {
+                                    // Save the thumbnail using the new approach
+                                    val thumbnailBytes = bitmapToByteArray(thumbnailBitmap)
+                                    val encryptedThumbnail = CryptoUtils.encrypt(thumbnailBytes, key!!)
+                                    val thumbnailFile = File(thumbnailsDir, "${mediaItem.id}.jpg")
+                                    thumbnailFile.writeBytes(encryptedThumbnail)
+                                    android.util.Log.d("SecureGallery", "Generated streaming thumbnail for video: ${mediaItem.name}")
+                                    processedCount++
+                                } else {
+                                    android.util.Log.w("SecureGallery", "Failed to generate streaming thumbnail for video: ${mediaItem.name}")
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("SecureGallery", "Out of memory while processing: ${mediaItem.name}. Forcing garbage collection.", e)
+                                // Force garbage collection
+                                System.gc()
+                                Thread.sleep(500)
                             }
                         }
                     }
@@ -1329,6 +1359,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                 }
             }
+            
+            override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
+                super.onViewRecycled(holder)
+                // Unmark bitmap as active when view is recycled
+                val mediaThumbnail = holder.mediaThumbnail
+                if (mediaThumbnail != null) {
+                    val cacheKey = "${mediaThumbnail.fileName}_${mediaThumbnail.fileSize}"
+                    memoryManager.unmarkBitmapActive(cacheKey)
+                }
+            }
         }
         
         photosRecyclerView.adapter = photosAdapter
@@ -1561,8 +1601,11 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
     
     class MediaThumbnailViewHolder(itemView: android.view.View) : RecyclerView.ViewHolder(itemView) {
         private var currentBitmap: android.graphics.Bitmap? = null
+        var mediaThumbnail: MediaThumbnail? = null
+            private set
         
         fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
+            this.mediaThumbnail = mediaThumbnail
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.mediaThumbnail)
             val playIcon = itemView.findViewById<android.widget.ImageView>(R.id.playIcon)
             val durationText = itemView.findViewById<android.widget.TextView>(R.id.videoDuration)
@@ -1749,7 +1792,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     MediaType.VIDEO -> {
                         try {
-                            val thumbnail = VideoUtils.generateVideoThumbnail(this@GalleryActivity, mediaItem, key)
+                            val secureVideoManager = SecureVideoManager()
+                            val thumbnail = secureVideoManager.generateVideoThumbnail(
+                                encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
+                                encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
+                                encryptionKey = key
+                            )
                             val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
@@ -1910,6 +1958,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                         notifyDataSetChanged()
                         true
                     }
+                }
+            }
+            
+            override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
+                super.onViewRecycled(holder)
+                // Unmark bitmap as active when view is recycled
+                val mediaThumbnail = holder.mediaThumbnail
+                if (mediaThumbnail != null) {
+                    val cacheKey = "${mediaThumbnail.fileName}_${mediaThumbnail.fileSize}"
+                    memoryManager.unmarkBitmapActive(cacheKey)
                 }
             }
         }
@@ -2223,6 +2281,15 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             android.util.Log.e("SecureGallery", "Failed to import gallery", e)
             Toast.makeText(this, "Import failed: ${e.message}", Toast.LENGTH_LONG).show()
         }
+    }
+    
+    /**
+     * Convert bitmap to byte array for encryption
+     */
+    private fun bitmapToByteArray(bitmap: android.graphics.Bitmap): ByteArray {
+        val stream = java.io.ByteArrayOutputStream()
+        bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, stream)
+        return stream.toByteArray()
     }
 }
 
