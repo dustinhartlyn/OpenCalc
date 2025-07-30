@@ -259,11 +259,11 @@ class SecureVideoManager(private val context: Context) {
             FileInputStream(encryptedFile).use { inputStream ->
                 FileOutputStream(outputFile).use { outputStream ->
                     
-                    var bytesRead: Int
                     var totalBytesRead = 0L
                     
-                    while (totalBytesRead < maxStreamSize && 
-                           inputStream.read(buffer).also { bytesRead = it } != -1) {
+                    while (totalBytesRead < maxStreamSize) {
+                        val bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
                         
                         // Calculate how much to read (don't exceed maxStreamSize)
                         val bytesToProcess = minOf(bytesRead, (maxStreamSize - totalBytesRead).toInt())
@@ -273,10 +273,10 @@ class SecureVideoManager(private val context: Context) {
                         val decryptedChunk = decryptDataWithKey(encryptedChunk, encryptionKey)
                         
                         // Write decrypted chunk to output
-                        outputStream.write(decryptedChunk)
+                        outputStream.write(decryptedChunk, 0, decryptedChunk.size)
                         
-                        totalBytesRead += bytesToProcess
-                        totalBytesWritten += decryptedChunk.size
+                        totalBytesRead += bytesToProcess.toLong()
+                        totalBytesWritten += decryptedChunk.size.toLong()
                         
                         // Yield to prevent blocking the main thread
                         if (totalBytesRead % (512 * 1024) == 0L) { // Every 512KB
@@ -314,6 +314,22 @@ class SecureVideoManager(private val context: Context) {
             
             // For small files (<20MB), stream up to 50% of the file
             else -> minOf(fileSizeBytes / 2, 10 * 1024 * 1024L)
+        }
+    }
+
+    /**
+     * Decrypt data using AES encryption - placeholder implementation
+     */
+    private fun decryptDataWithKey(encryptedData: ByteArray, encryptionKey: String): ByteArray {
+        return try {
+            val key = SecretKeySpec(encryptionKey.toByteArray(Charsets.UTF_8).copyOf(16), "AES")
+            val cipher = Cipher.getInstance("AES")
+            cipher.init(Cipher.DECRYPT_MODE, key)
+            cipher.doFinal(encryptedData)
+        } catch (e: Exception) {
+            Log.e(TAG, "Decryption failed, returning original data", e)
+            // Fallback: return original data (might not be encrypted)
+            encryptedData
         }
     }
     
