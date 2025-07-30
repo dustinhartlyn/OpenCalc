@@ -84,7 +84,7 @@ class GalleryActivity : AppCompatActivity() {
     private var isMediaViewerActive = false
     private var isRecreating = false
     private var securityStartTime = 0L
-    private lateinit var resumeTime: Long
+    private var resumeTime = 0L
     
     // Gallery loading progress
     private var galleryLoadingIndicator: android.widget.ProgressBar? = null
@@ -1061,7 +1061,7 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onPause() {
-        val timeSinceResume = if (this::resumeTime.isInitialized) System.currentTimeMillis() - resumeTime else -1
+        val timeSinceResume = if (resumeTime > 0) System.currentTimeMillis() - resumeTime else -1
         android.util.Log.d("SecureGallery", "=== GalleryActivity onPause() ===")
         android.util.Log.d("SecureGallery", "onPause: Time since resume: ${timeSinceResume}ms")
         android.util.Log.d("SecureGallery", "onPause: About to pause activity (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
