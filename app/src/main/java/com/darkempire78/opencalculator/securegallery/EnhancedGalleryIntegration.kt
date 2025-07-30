@@ -164,7 +164,7 @@ class EnhancedGalleryIntegration(private val context: Context) {
     }
     
     /**
-     * Generate photo thumbnail with memory safety
+     * Generate photo thumbnail with memory safety - SIMPLIFIED VERSION
      */
     private suspend fun generatePhotoThumbnailSafely(
         encryptedFile: java.io.File,
@@ -173,29 +173,84 @@ class EnhancedGalleryIntegration(private val context: Context) {
     ): Bitmap? {
         
         return try {
-            // For photos, decrypt and load with size constraints
+            Log.d(TAG, "Generating photo thumbnail for: ${encryptedFile.name}")
+            
+            // Simple decryption approach
             val decryptedData = decryptDataWithKey(encryptedFile.readBytes(), encryptionKey)
             
             // Create temp file for bitmap loading
-            val tempFile = java.io.File.createTempFile("photo_thumb", ".jpg")
+            val tempFile = java.io.File.createTempFile("photo_thumb", ".jpg", context.cacheDir)
             tempFile.writeBytes(decryptedData)
             
-            // Load bitmap safely
-            val thumbnail = memoryManager.loadBitmapSafely(
-                tempFile, 
-                thumbnailSize, 
-                thumbnailSize, 
-                "${encryptedFile.name}_photo_thumb"
-            )
+            // Load bitmap safely with memory management
+            val thumbnail = try {
+                val options = android.graphics.BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath, options)
+                
+                // Calculate sample size
+                val sampleSize = calculateInSampleSize(options, thumbnailSize, thumbnailSize)
+                
+                options.inJustDecodeBounds = false
+                options.inSampleSize = sampleSize
+                options.inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 // Use less memory
+                
+                android.graphics.BitmapFactory.decodeFile(tempFile.absolutePath, options)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error decoding photo bitmap", e)
+                null
+            }
             
             // Cleanup temp file
-            tempFile.delete()
+            try {
+                tempFile.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Error deleting temp photo file", e)
+            }
             
+            Log.d(TAG, if (thumbnail != null) "Successfully generated photo thumbnail" else "Failed to generate photo thumbnail")
             thumbnail
             
         } catch (e: Exception) {
             Log.e(TAG, "Error generating photo thumbnail", e)
             null
+        }
+    }
+    
+    /**
+     * Calculate sample size for bitmap loading
+     */
+    private fun calculateInSampleSize(options: android.graphics.BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val height = options.outHeight
+        val width = options.outWidth
+        var inSampleSize = 1
+        
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight = height / 2
+            val halfWidth = width / 2
+            
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        
+        return inSampleSize
+    }
+    
+    /**
+     * Simple decryption method - placeholder implementation
+     */
+    private fun decryptDataWithKey(encryptedData: ByteArray, encryptionKey: String): ByteArray {
+        return try {
+            val key = javax.crypto.spec.SecretKeySpec(encryptionKey.toByteArray(Charsets.UTF_8).copyOf(16), "AES")
+            val cipher = javax.crypto.Cipher.getInstance("AES")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key)
+            cipher.doFinal(encryptedData)
+        } catch (e: Exception) {
+            Log.e(TAG, "Decryption failed, returning original data", e)
+            // Fallback: return original data (might not be encrypted yet)
+            encryptedData
         }
     }
     

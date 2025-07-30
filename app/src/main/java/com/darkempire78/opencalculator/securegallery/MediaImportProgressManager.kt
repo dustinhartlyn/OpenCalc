@@ -144,9 +144,10 @@ class MediaImportProgressManager(private val context: Context) {
             delay(50) // Small delay to prevent UI blocking
         }
         
-        // Phase 2: Thumbnail Generation
+        // Phase 2: Thumbnail Generation (this runs AFTER encryption phase completes)
         if (encryptedFiles.isNotEmpty()) {
             updatePhase(ImportPhase.GENERATING_THUMBNAILS, encryptedFiles.size)
+            Log.d(TAG, "Starting thumbnail generation for ${encryptedFiles.size} files")
             
             for ((index, encryptedFile) in encryptedFiles.withIndex()) {
                 if (!backgroundScope.isActive) break
@@ -155,24 +156,40 @@ class MediaImportProgressManager(private val context: Context) {
                     updateProgress(
                         currentItem = index + 1,
                         totalItems = encryptedFiles.size,
-                        itemName = encryptedFile.fileName
+                        itemName = "Generating thumbnail for ${encryptedFile.fileName}"
                     )
                     
-                    generateThumbnailSafely(encryptedFile, encryptionKey)
+                    // Generate thumbnail with timeout to prevent hanging
+                    val thumbnailJob = async {
+                        generateThumbnailSafely(encryptedFile, encryptionKey)
+                    }
+                    
+                    // Wait max 30 seconds for thumbnail generation
+                    try {
+                        withTimeout(30000) {
+                            thumbnailJob.await()
+                        }
+                        Log.d(TAG, "Successfully generated thumbnail for: ${encryptedFile.fileName}")
+                    } catch (e: TimeoutCancellationException) {
+                        Log.w(TAG, "Thumbnail generation timed out for: ${encryptedFile.fileName}")
+                        thumbnailJob.cancel()
+                    }
                     
                     // More aggressive memory management during thumbnail generation
                     if (MemoryManager.isLowMemory()) {
                         MemoryManager.forceMemoryCleanup()
-                        delay(200) // Longer pause after cleanup during thumbnail generation
+                        delay(300) // Longer pause after cleanup during thumbnail generation
                     }
                     
                 } catch (e: Exception) {
                     Log.e(TAG, "Error generating thumbnail: ${encryptedFile.fileName}", e)
-                    notifyError("Thumbnail generation failed: ${e.message}", encryptedFile.fileName)
+                    // Don't fail the entire import for thumbnail errors
+                    Log.w(TAG, "Continuing import without thumbnail for: ${encryptedFile.fileName}")
                 }
                 
-                delay(100) // Longer delay for thumbnail generation
+                delay(150) // Longer delay for thumbnail generation
             }
+            Log.d(TAG, "Completed thumbnail generation phase")
         }
         
         // Phase 3: Finalizing
@@ -288,79 +305,69 @@ class MediaImportProgressManager(private val context: Context) {
     ) {
         withContext(Dispatchers.IO) {
             try {
-                when (encryptedFile.mediaType) {
-                    MediaType.PHOTO -> generatePhotoThumbnail(encryptedFile, encryptionKey)
-                    MediaType.VIDEO -> generateVideoThumbnailSafely(encryptedFile, encryptionKey)
+                Log.d(TAG, "Starting thumbnail generation for: ${encryptedFile.fileName} (${encryptedFile.mediaType})")
+                
+                val file = File(encryptedFile.filePath)
+                if (!file.exists()) {
+                    Log.e(TAG, "Encrypted file does not exist: ${encryptedFile.filePath}")
+                    return@withContext
                 }
+                
+                // Use the enhanced gallery integration for thumbnail generation
+                val galleryIntegration = EnhancedGalleryIntegration(context)
+                
+                val thumbnail = galleryIntegration.generateThumbnailSafely(
+                    file,
+                    encryptionKey,
+                    encryptedFile.mediaType,
+                    320 // Standard thumbnail size
+                )
+                
+                if (thumbnail != null) {
+                    Log.d(TAG, "Successfully generated ${thumbnail.width}x${thumbnail.height} thumbnail for: ${encryptedFile.fileName}")
+                    // Immediately recycle to save memory during import
+                    thumbnail.recycle()
+                } else {
+                    Log.w(TAG, "Thumbnail generation returned null for: ${encryptedFile.fileName}")
+                }
+                
             } catch (e: OutOfMemoryError) {
                 Log.e(TAG, "OutOfMemoryError generating thumbnail for: ${encryptedFile.fileName}")
                 MemoryManager.forceMemoryCleanup()
-                // Retry with smaller thumbnail size
-                delay(1000)
-                generateThumbnailWithReducedSize(encryptedFile, encryptionKey)
+                // Don't retry - just continue without thumbnail
+            } catch (e: Exception) {
+                Log.e(TAG, "Error generating thumbnail for: ${encryptedFile.fileName}", e)
+                // Don't fail the entire import for thumbnail errors
             }
         }
     }
     
-    private suspend fun generateVideoThumbnailSafely(
-        encryptedFile: EncryptedMediaInfo,
-        encryptionKey: String
-    ) {
-        val file = java.io.File(encryptedFile.filePath)
-        
-        // Check if we should stream this video
-        if (MemoryManager.shouldStreamVideo(file)) {
-            Log.d(TAG, "Video too large (${file.length() / 1024 / 1024}MB), generating lightweight thumbnail")
-            generateLightweightVideoThumbnail(encryptedFile, encryptionKey)
-        } else {
-            generateStandardVideoThumbnail(encryptedFile, encryptionKey)
-        }
-    }
-    
-    private fun generateLightweightVideoThumbnail(
-        encryptedFile: EncryptedMediaInfo,
-        encryptionKey: String
-    ) {
-        // Generate thumbnail from first few KB of video without full decryption
-        Log.d(TAG, "Generating lightweight thumbnail for: ${encryptedFile.fileName}")
-        // Implementation would create a small preview without loading full video
-    }
-    
-    private fun generateStandardVideoThumbnail(
-        encryptedFile: EncryptedMediaInfo,
-        encryptionKey: String
-    ) {
-        // Standard thumbnail generation for smaller videos
-        Log.d(TAG, "Generating standard thumbnail for: ${encryptedFile.fileName}")
-        // Implementation would use existing video thumbnail logic
-    }
-    
-    private fun generatePhotoThumbnail(
-        encryptedFile: EncryptedMediaInfo,
-        encryptionKey: String
-    ) {
-        Log.d(TAG, "Generating photo thumbnail for: ${encryptedFile.fileName}")
-        // Implementation would use MemoryManager.loadBitmapSafely
-    }
-    
-    private fun generateThumbnailWithReducedSize(
-        encryptedFile: EncryptedMediaInfo,
-        encryptionKey: String
-    ) {
-        Log.d(TAG, "Generating reduced-size thumbnail for: ${encryptedFile.fileName}")
-        // Fallback with even smaller thumbnail dimensions
-    }
-    
-    // Helper methods (would integrate with existing GalleryActivity methods)
+    // Helper methods for media import
     private fun getFileNameFromUri(uri: android.net.Uri): String? {
-        // Implementation would extract filename from URI
-        // For now return a placeholder
-        return uri.lastPathSegment ?: "unknown_file"
+        var fileName: String? = null
+        
+        // Try content resolver first
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (nameIndex >= 0) {
+                    fileName = cursor.getString(nameIndex)
+                }
+            }
+        }
+        
+        // Fallback to last path segment
+        return fileName ?: uri.lastPathSegment ?: "unknown_file_${System.currentTimeMillis()}"
     }
     
     private fun determineMediaType(fileName: String): MediaType {
         val extension = fileName.substringAfterLast('.', "").lowercase()
         return when (extension) {
+            "jpg", "jpeg", "png", "bmp", "gif", "webp" -> MediaType.PHOTO
+            "mp4", "avi", "mov", "mkv", "webm", "3gp" -> MediaType.VIDEO
+            else -> MediaType.PHOTO // Default to photo for unknown types
+        }
+    }
             "mp4", "avi", "mov", "mkv", "webm" -> MediaType.VIDEO
             else -> MediaType.PHOTO
         }
