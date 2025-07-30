@@ -1273,7 +1273,7 @@ class GalleryActivity : AppCompatActivity() {
         
         // Ensure RecyclerView can scroll and display all items
         photosRecyclerView.setHasFixedSize(false) // Allow dynamic sizing
-        photosRecyclerView.isNestedScrollingEnabled = true // Enable proper scrolling
+        photosRecyclerView.isNestedScrollingEnabled = false // Disable nested scrolling since we're inside a ScrollView
         
         // Add momentum scrolling - similar to iOS smooth deceleration
         // Standard friction for smooth deceleration (0.84f provides good momentum without being too bouncy)

@@ -1,14 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#424242"
-    android:fillViewport="false">
+    android:fillViewport="false"
+    android:scrollbars="vertical"
+    android:fadeScrollbars="false">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:orientation="vertical"
+        android:clipToPadding="false"
+        android:clipChildren="false">
 
         <androidx.appcompat.widget.Toolbar
             android:id="@+id/galleryToolbar"
@@ -60,7 +64,9 @@
             android:layout_height="wrap_content"
             android:background="#424242"
             android:padding="2dp"
-            android:layout_marginBottom="8dp" />
+            android:layout_marginBottom="8dp"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -116,6 +122,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:nestedScrollingEnabled="false"
+                android:overScrollMode="never"
                 android:minHeight="150dp" />
                 
             <Button
@@ -132,4 +139,4 @@
 
     </LinearLayout>
 
-</ScrollView>
+</androidx.core.widget.NestedScrollView>
