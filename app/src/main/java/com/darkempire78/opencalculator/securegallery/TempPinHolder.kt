@@ -16,22 +16,17 @@ object TempPinHolder {
     }
     
     fun clearSecurityTrigger() {
-        val oldCount = securityTriggerCount
         securityTriggerCount = 0
         lastClearTime = System.currentTimeMillis()
-        android.util.Log.d("TempPinHolder", "Security trigger cleared: count $oldCount -> 0 at time $lastClearTime")
     }
     
     fun wasRecentlyCleared(): Boolean {
         val timeSinceClear = System.currentTimeMillis() - lastClearTime
-        val recentlyCleared = timeSinceClear < 3000
-        android.util.Log.d("TempPinHolder", "wasRecentlyCleared check: timeSinceClear=${timeSinceClear}ms, result=$recentlyCleared")
-        return recentlyCleared
+        return timeSinceClear < 3000
     }
     
     fun triggerSecurity(reason: String) {
         securityTriggerCount++
-        android.util.Log.d("TempPinHolder", "Security triggered: $reason (count: $securityTriggerCount)")
     }
     
     fun getSecurityTriggerCount(): Int = securityTriggerCount

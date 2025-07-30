@@ -12,7 +12,8 @@ class Gallery(
     val media: MutableList<SecureMedia> = mutableListOf(), // Changed from photos to media
     var pinHash: ByteArray? = null, // Secure PIN verification hash
     var sortOrder: GallerySortOrder = GallerySortOrder.NAME, // Media sort order
-    var customOrder: MutableList<Int> = mutableListOf() // Custom order indices
+    var customOrder: MutableList<Int> = mutableListOf(), // Custom order indices
+    var securityLevel: Int = 1 // Security level: 1 = standard, 2 = restricted (no new gallery creation, no export)
 ) : Serializable {
     
     // Backward compatibility property for existing code that references 'photos'

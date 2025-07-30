@@ -20,8 +20,8 @@ object GalleryManager {
         galleries.add(gallery)
     }
 
-    // Create a new gallery with a pin and name
-    fun createGallery(pin: String, name: String): Boolean {
+    // Create a new gallery with a pin, name, and security level
+    fun createGallery(pin: String, name: String, securityLevel: Int = 1): Boolean {
         if (getGalleries().any { it.name == name }) {
             android.util.Log.d("SecureGallery", "Gallery creation failed: name already exists.")
             return false
@@ -34,11 +34,12 @@ object GalleryManager {
             salt = salt,
             notes = mutableListOf(), // Start with empty notes list
             media = mutableListOf(),
-            pinHash = pinHash
+            pinHash = pinHash,
+            securityLevel = securityLevel
         )
         addGallery(newGallery)
         saveGalleries()
-        android.util.Log.d("SecureGallery", "Gallery created: $name with pin $pin")
+        android.util.Log.d("SecureGallery", "Gallery created: $name with pin $pin, security level $securityLevel")
         return true
     }
 

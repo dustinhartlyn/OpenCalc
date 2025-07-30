@@ -1061,96 +1061,44 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onPause() {
-        val timeSinceResume = if (resumeTime > 0) System.currentTimeMillis() - resumeTime else -1
-        android.util.Log.d("SecureGallery", "=== GalleryActivity onPause() ===")
-        android.util.Log.d("SecureGallery", "onPause: Time since resume: ${timeSinceResume}ms")
-        android.util.Log.d("SecureGallery", "onPause: About to pause activity (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
-        android.util.Log.d("SecureGallery", "onPause: Checking if this is an unexpected early pause...")
-        
-        if (timeSinceResume in 0..1000) {
-            android.util.Log.w("SecureGallery", "WARNING: Gallery paused very quickly after resume (${timeSinceResume}ms) - this may indicate a system issue")
-        }
-        
         super.onPause()
         
         // Disable security monitoring during pause
         securityManager?.disable()
-        android.util.Log.d("SecureGallery", "onPause: Security monitoring disabled")
-        
-        // Don't immediately trigger security on pause - let other mechanisms handle it
-        // This prevents false positives during startup and normal lifecycle events
-        android.util.Log.d("SecureGallery", "onPause: Activity paused - not triggering security")
     }
     
     override fun onStop() {
-        android.util.Log.d("SecureGallery", "=== GalleryActivity onStop() ===")
-        android.util.Log.d("SecureGallery", "onStop: Activity stopping (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
-        android.util.Log.d("SecureGallery", "onStop: Current security state - triggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
-        
         super.onStop()
         
-        // onStop means the activity is no longer visible to the user
-        // This is a more reliable indicator than onPause for actual app switching
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
             val timeSinceSecurityStart = System.currentTimeMillis() - securityStartTime
             
             // Only trigger security if not already triggered (e.g., by face-down detection)
             if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
-                Log.d("SecureGallery", "onStop: App truly backgrounded - triggering security")
                 TempPinHolder.triggerSecurity("App backgrounded (onStop)")
-            } else if (TempPinHolder.securityTriggered) {
-                Log.d("SecureGallery", "onStop: Security already triggered (probably by face-down) - not setting again")
-            } else {
-                Log.d("SecureGallery", "onStop: During startup protection period (${timeSinceSecurityStart}ms) - NOT triggering security")
             }
-        } else {
-            Log.d("SecureGallery", "onStop: System activity transition - NOT triggering security")
         }
     }
     
     override fun finish() {
-        android.util.Log.d("SecureGallery", "=== GalleryActivity finish() CALLED ===")
-        android.util.Log.d("SecureGallery", "finish: Stack trace:")
-        android.util.Log.d("SecureGallery", android.util.Log.getStackTraceString(Exception("finish() called")))
-        android.util.Log.d("SecureGallery", "finish: Security state - triggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
         super.finish()
     }
 
     override fun onRestart() {
-        android.util.Log.d("SecureGallery", "=== GalleryActivity onRestart() ===")
-        android.util.Log.d("SecureGallery", "onRestart: Current thread: ${Thread.currentThread().name}")
-        android.util.Log.d("SecureGallery", "onRestart: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
-        
         super.onRestart()
         
-        // IMPORTANT: onRestart() can be called during normal activity launch after PIN entry
-        // We should NOT close the gallery here if the security trigger was recently cleared (PIN just validated)
-        
         if (TempPinHolder.securityTriggered && !TempPinHolder.wasRecentlyCleared()) {
-            // Only close if security is triggered AND it wasn't recently cleared by PIN validation
-            android.util.Log.d("SecureGallery", "onRestart: Security triggered and NOT recently cleared - CLOSING GALLERY")
-            android.util.Log.d("SecureGallery", "onRestart: About to call finish() - this will close the gallery")
             finish()
             return
-        } else if (TempPinHolder.securityTriggered && TempPinHolder.wasRecentlyCleared()) {
-            android.util.Log.d("SecureGallery", "onRestart: Security triggered but WAS recently cleared by PIN validation - IGNORING and continuing")
-        } else {
-            android.util.Log.d("SecureGallery", "onRestart: No security trigger detected - continuing normally")
         }
-        
-        android.util.Log.d("SecureGallery", "onRestart: Completed successfully without closing gallery")
     }
     
     override fun onResume() {
         resumeTime = System.currentTimeMillis()
-        android.util.Log.d("SecureGallery", "=== GalleryActivity onResume() ===")
-        android.util.Log.d("SecureGallery", "onResume: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
-        
         super.onResume()
         
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
-        android.util.Log.d("SecureGallery", "onResume: Security monitoring enabled")
         
         // Only refresh if we're returning from photo picker or if media viewer was NOT active
         // This prevents duplicate thumbnails when returning from photo viewer
@@ -1215,7 +1163,6 @@ class GalleryActivity : AppCompatActivity() {
         // Initialize proper security manager
         securityManager = SecurityManager(this, object : SecurityManager.SecurityEventListener {
             override fun onSecurityTrigger(reason: String) {
-                Log.d("SecureGallery", "Security trigger: $reason")
                 closeGalleryForSecurity()
             }
         })
@@ -1228,15 +1175,11 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun closeGalleryForSecurity() {
-        android.util.Log.d("SecureGallery", "closeGalleryForSecurity called, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}")
         if (!TempPinHolder.securityTriggered) {
-            android.util.Log.d("SecureGallery", "Security not already triggered, setting flag and finishing activity")
             TempPinHolder.triggerSecurity("Gallery security closure")
             // Clear PIN from memory for security - user must re-enter PIN to access gallery again
             TempPinHolder.clear()
             finish() // Close gallery and return to calculator
-        } else {
-            android.util.Log.d("SecureGallery", "Security already triggered, ignoring call")
         }
     }
     
@@ -1248,14 +1191,8 @@ class GalleryActivity : AppCompatActivity() {
     
     // SensorEventListener implementation for accelerometer
     override fun onCreate(savedInstanceState: Bundle?) {
-        android.util.Log.d("SecureGallery", "=== GalleryActivity onCreate() STARTED ===")
-        android.util.Log.d("SecureGallery", "onCreate: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
-        
         super.onCreate(savedInstanceState)
-        android.util.Log.d("SecureGallery", "onCreate: super.onCreate() completed")
-        
         setContentView(R.layout.activity_gallery)
-        android.util.Log.d("SecureGallery", "onCreate: setContentView completed")
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
         window.addFlags(
@@ -1263,14 +1200,12 @@ class GalleryActivity : AppCompatActivity() {
             android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
             android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
         )
-        android.util.Log.d("SecureGallery", "onCreate: Screen management flags set for gallery")
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
 
         // Record when security system becomes active to prevent startup false positives
         securityStartTime = System.currentTimeMillis()
-        Log.d("SecureGallery", "Security start time recorded for startup protection")
         
         // Initialize memory manager
         MemoryManager.initialize(this)
@@ -1606,22 +1541,47 @@ class GalleryActivity : AppCompatActivity() {
 
     // Dialog for creating a gallery
     private fun showCreateGalleryDialog() {
+        // Check security level restriction
+        if (isCurrentGalleryLevel2()) {
+            Toast.makeText(this, "Gallery creation not allowed for Level 2 galleries", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         val pinInput = android.widget.EditText(this)
         pinInput.hint = "Enter PIN"
         val nameInput = android.widget.EditText(this)
         nameInput.hint = "Enter Gallery Name"
+        
+        // Security level selection
+        val securityLevelSpinner = android.widget.Spinner(this)
+        val securityLevelOptions = arrayOf("Level 1 - Standard", "Level 2 - Restricted")
+        val adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_spinner_item, securityLevelOptions)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        securityLevelSpinner.adapter = adapter
+        
+        // Explanatory text for security levels
+        val explanationText = android.widget.TextView(this)
+        explanationText.text = "Security Level 2 galleries cannot create new galleries or export data"
+        explanationText.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 12f)
+        explanationText.setTextColor(android.graphics.Color.GRAY)
+        explanationText.setPadding(0, 8, 0, 8)
+        
         val layout = android.widget.LinearLayout(this)
         layout.orientation = android.widget.LinearLayout.VERTICAL
         layout.addView(pinInput)
         layout.addView(nameInput)
+        layout.addView(android.widget.TextView(this).apply { text = "Security Level:" })
+        layout.addView(securityLevelSpinner)
+        layout.addView(explanationText)
+        
         android.app.AlertDialog.Builder(this)
             .setTitle("Create Gallery")
             .setView(layout)
             .setPositiveButton("Create") { _, _ ->
                 val pin = pinInput.text.toString()
                 val name = nameInput.text.toString()
-                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name)
-                android.util.Log.d("SecureGallery", "CreateGalleryDialog: pin=$pin name=$name result=$result")
+                val securityLevel = securityLevelSpinner.selectedItemPosition + 1 // 1 or 2
+                val result = com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name, securityLevel)
                 if (result) {
                     Toast.makeText(this, "Gallery created", Toast.LENGTH_SHORT).show()
                     // Close current and open new gallery
@@ -1675,11 +1635,22 @@ class GalleryActivity : AppCompatActivity() {
             .show()
     }
 
+    // Helper method to get the current gallery
+    private fun getCurrentGallery(): Gallery? {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return null
+        return GalleryManager.getGalleries().find { it.name == galleryName }
+    }
+
+    // Helper method to check if current gallery is level 2
+    private fun isCurrentGalleryLevel2(): Boolean {
+        return getCurrentGallery()?.securityLevel == 2
+    }
+
     private fun showCustomGalleryMenu() {
         val dialog = Dialog(this)
         
         // Only show normal menu items, delete mode is handled by dedicated buttons
-        val menuItems = listOf(
+        val allMenuItems = listOf(
             Pair("Add Media", R.id.action_add_pictures), // Changed text but keeping same ID for compatibility
             Pair("Export Photos", R.id.action_export_photos),
             Pair("Export Gallery", R.id.action_export_gallery),
@@ -1689,6 +1660,18 @@ class GalleryActivity : AppCompatActivity() {
             Pair("Rename Gallery", R.id.action_rename_gallery),
             Pair("Delete Gallery", R.id.action_delete_gallery)
         )
+        
+        // Filter menu items based on security level
+        val menuItems = if (isCurrentGalleryLevel2()) {
+            // For level 2 galleries, exclude create gallery and export options
+            allMenuItems.filter { (_, id) ->
+                id != R.id.action_create_gallery && 
+                id != R.id.action_export_photos && 
+                id != R.id.action_export_gallery
+            }
+        } else {
+            allMenuItems
+        }
         
         val container = android.widget.LinearLayout(this)
         container.orientation = android.widget.LinearLayout.VERTICAL
@@ -2194,6 +2177,12 @@ class GalleryActivity : AppCompatActivity() {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         
+        // Check security level restriction
+        if (gallery.securityLevel == 2) {
+            Toast.makeText(this, "Export not allowed for Level 2 galleries", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         if (gallery.photos.isEmpty()) {
             Toast.makeText(this, "No photos to export", Toast.LENGTH_SHORT).show()
             return
@@ -2273,6 +2262,14 @@ class GalleryActivity : AppCompatActivity() {
     
     private fun exportGalleryToFile() {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        
+        // Check security level restriction
+        if (gallery.securityLevel == 2) {
+            Toast.makeText(this, "Export not allowed for Level 2 galleries", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
         val fileName = "gallery_${galleryName.replace(" ", "_")}_$timestamp.secgal"
         
