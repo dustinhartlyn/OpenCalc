@@ -528,6 +528,8 @@ class GalleryActivity : AppCompatActivity() {
             android.util.Log.d("SecureGallery", "Background thumbnail loading started")
             
             var loadedCount = 0
+            val updateBatchSize = 3 // Update UI every 3 thumbnails to reduce main thread pressure
+            
             media.forEachIndexed { index, mediaItem ->
                 try {
                     android.util.Log.d("SecureGallery", "Loading thumbnail $index/${media.size}: ${mediaItem.name} (${mediaItem.mediaType})")
@@ -537,13 +539,18 @@ class GalleryActivity : AppCompatActivity() {
                         runOnUiThread {
                             if (index < decryptedMedia.size) {
                                 decryptedMedia[index] = thumbnail
-                                photosAdapter?.notifyItemChanged(index)
+                                // Only notify for individual items occasionally to reduce UI pressure
+                                if (index % updateBatchSize == 0 || index == media.size - 1) {
+                                    photosAdapter?.notifyItemChanged(index)
+                                }
                                 android.util.Log.d("SecureGallery", "✓ Successfully set thumbnail at position $index")
                                 
                                 loadedCount++
-                                // Update loading indicator
-                                galleryLoadingIndicator?.progress = loadedCount
-                                galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                // Update loading indicator less frequently
+                                if (index % updateBatchSize == 0 || index == media.size - 1) {
+                                    galleryLoadingIndicator?.progress = loadedCount
+                                    galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                }
                             } else {
                                 android.util.Log.e("SecureGallery", "✗ Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
                             }
@@ -552,22 +559,26 @@ class GalleryActivity : AppCompatActivity() {
                         android.util.Log.w("SecureGallery", "✗ Failed to load thumbnail for position $index: ${mediaItem.name}")
                         runOnUiThread {
                             loadedCount++
-                            // Update progress even for failed thumbnails
-                            galleryLoadingIndicator?.progress = loadedCount
-                            galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                            // Update progress even for failed thumbnails, but less frequently
+                            if (index % updateBatchSize == 0 || index == media.size - 1) {
+                                galleryLoadingIndicator?.progress = loadedCount
+                                galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                            }
                         }
                     }
                     
-                    // Brief pause to prevent overwhelming the system
-                    Thread.sleep(25) // Reduced from 50ms
+                    // Brief pause to prevent overwhelming the system - increased for stability
+                    Thread.sleep(50) // Increased from 25ms to reduce main thread pressure
                     
                 } catch (e: Exception) {
                     android.util.Log.e("SecureGallery", "✗ Exception loading thumbnail $index: ${mediaItem.name}", e)
                     runOnUiThread {
                         loadedCount++
-                        // Update progress even for failed thumbnails
-                        galleryLoadingIndicator?.progress = loadedCount
-                        galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                        // Update progress even for failed thumbnails, but less frequently
+                        if (index % updateBatchSize == 0 || index == media.size - 1) {
+                            galleryLoadingIndicator?.progress = loadedCount
+                            galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                        }
                     }
                 }
             }
@@ -579,7 +590,7 @@ class GalleryActivity : AppCompatActivity() {
                 val actualLoadedCount = decryptedMedia.count { it != null }
                 android.util.Log.d("SecureGallery", "FINAL STATUS: ${decryptedMedia.size} total slots, $actualLoadedCount loaded thumbnails")
                 
-                // Force complete adapter refresh
+                // Final batch update - notify all items at once for efficiency
                 photosAdapter?.notifyDataSetChanged()
                 
                 // Force RecyclerView to recalculate everything
@@ -1236,9 +1247,14 @@ class GalleryActivity : AppCompatActivity() {
         val notes = gallery?.notes ?: mutableListOf()
         val media = gallery?.media ?: mutableListOf() // Changed from photos to media
 
-        // Apply sort order to media
+        // Apply sort order to media - defer to background to reduce main thread work
         if (gallery != null) {
-            GallerySortUtils.applySortOrder(gallery)
+            Thread {
+                GallerySortUtils.applySortOrder(gallery)
+                runOnUiThread {
+                    android.util.Log.d("SecureGallery", "Sort order applied for ${gallery.media.size} media items")
+                }
+            }.start()
         }
 
         // Decrypt notes using pin and salt
@@ -1459,13 +1475,19 @@ class GalleryActivity : AppCompatActivity() {
         
         photosRecyclerView.adapter = photosAdapter
 
-        // NOW load thumbnails after adapter is properly set up
-        if (key != null && media.isNotEmpty()) {
-            android.util.Log.d("SecureGallery", "Starting thumbnail loading for ${media.size} media items")
-            loadInitialThumbnails(media, key)
-        } else {
-            android.util.Log.w("SecureGallery", "No media to load: key=${key != null}, media.size=${media.size}")
-        }
+        // Defer thumbnail loading to prevent main thread blocking during startup
+        // This prevents the immediate onPause that was causing screen management issues
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (!isFinishing && !isDestroyed) {
+                // Load thumbnails after UI has settled
+                if (key != null && media.isNotEmpty()) {
+                    android.util.Log.d("SecureGallery", "Starting deferred thumbnail loading for ${media.size} media items")
+                    loadInitialThumbnails(media, key)
+                } else {
+                    android.util.Log.w("SecureGallery", "No media to load: key=${key != null}, media.size=${media.size}")
+                }
+            }
+        }, 200) // 200ms delay to let activity fully initialize
 
         // Add drag-and-drop support for organize mode
         setupDragAndDrop(photosRecyclerView)
