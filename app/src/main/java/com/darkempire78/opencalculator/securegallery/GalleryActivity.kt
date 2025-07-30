@@ -404,20 +404,36 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     val thumbnail = if (cachedThumbnail != null) {
                         cachedThumbnail
                     } else {
-                        // For videos, use streaming approach to avoid memory issues
+                        // For videos, use ThumbnailGenerator to handle the thumbnail creation and storage
                         try {
-                            val secureVideoManager = SecureVideoManager(this)
-                            val file = if (mediaItem.usesExternalStorage()) {
-                                File(mediaItem.filePath!!)
+                            val thumbnailPath = if (mediaItem.usesExternalStorage()) {
+                                ThumbnailGenerator.generateVideoThumbnailFromFile(
+                                    this, 
+                                    mediaItem.filePath!!, 
+                                    mediaItem.id.toString(), 
+                                    intent.getStringExtra("gallery_name") ?: "", 
+                                    key!!
+                                )
                             } else {
-                                // For internal storage, create a temporary file
-                                val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
-                                tempFile.writeBytes(mediaItem.getEncryptedData())
-                                tempFile
+                                // For internal storage, decrypt and use bytes
+                                val encryptedData = mediaItem.getEncryptedData()
+                                val iv = encryptedData.copyOfRange(0, 16)
+                                val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                                val decryptedBytes = CryptoUtils.decrypt(iv, ct, key!!)
+                                ThumbnailGenerator.generateVideoThumbnail(
+                                    this,
+                                    decryptedBytes,
+                                    mediaItem.id.toString(),
+                                    intent.getStringExtra("gallery_name") ?: "",
+                                    key!!
+                                )
                             }
                             
-                            // Note: This should be called from a coroutine, but for now we'll use a fallback
-                            VideoUtils.generateVideoThumbnailFromFile(file, key!!)
+                            if (thumbnailPath != null) {
+                                VideoUtils.generateVideoThumbnailFromFile(File(thumbnailPath), key!!)
+                            } else {
+                                null
+                            }
                         } catch (e: Exception) {
                             android.util.Log.e("SecureGallery", "Failed to generate streaming video thumbnail", e)
                             null
@@ -1812,16 +1828,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     MediaType.VIDEO -> {
                         try {
-                            val file = if (mediaItem.usesExternalStorage()) {
-                                File(mediaItem.filePath!!)
+                            val thumbnail = if (mediaItem.usesExternalStorage()) {
+                                VideoUtils.generateVideoThumbnailFromFile(File(mediaItem.filePath!!), key)
                             } else {
-                                // For internal storage, create a temporary file
-                                val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
-                                tempFile.writeBytes(mediaItem.getEncryptedData())
-                                tempFile
+                                // For internal storage, decrypt and generate thumbnail
+                                val encryptedData = mediaItem.getEncryptedData()
+                                val iv = encryptedData.copyOfRange(0, 16)
+                                val ct = encryptedData.copyOfRange(16, encryptedData.size)
+                                val decryptedBytes = CryptoUtils.decrypt(iv, ct, key)
+                                VideoUtils.generateVideoThumbnailFromDecryptedBytes(decryptedBytes)
                             }
-                            
-                            val thumbnail = VideoUtils.generateVideoThumbnailFromFile(file, key)
                             val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
