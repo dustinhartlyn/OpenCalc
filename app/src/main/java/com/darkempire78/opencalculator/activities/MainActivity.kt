@@ -356,12 +356,12 @@ class MainActivity : AppCompatActivity() {
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 // Use debouncing to reduce calculation frequency
-                com.darkempire78.opencalculator.utils.PerformanceOptimizer.debounce(lifecycleScope) {
+                PerformanceOptimizer.debounce(lifecycleScope) {
                     updateResultDisplay()
                 }
                 
                 // Optimize text size adjustment
-                com.darkempire78.opencalculator.utils.PerformanceOptimizer.batchUIUpdate {
+                PerformanceOptimizer.batchUIUpdate {
                     textSizeAdjuster.adjustTextSize(binding.input,
                         TextSizeAdjuster.AdjustableTextType.Input
                     )
@@ -382,12 +382,11 @@ class MainActivity : AppCompatActivity() {
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 // Batch text size adjustments to reduce UI thrashing
-                com.darkempire78.opencalculator.utils.PerformanceOptimizer.batchUIUpdate {
+                PerformanceOptimizer.batchUIUpdate {
                     textSizeAdjuster.adjustTextSize(binding.resultDisplay,
                         TextSizeAdjuster.AdjustableTextType.Output
                     )
                 }
-            }
             }
 
             override fun afterTextChanged(s: Editable?) {
