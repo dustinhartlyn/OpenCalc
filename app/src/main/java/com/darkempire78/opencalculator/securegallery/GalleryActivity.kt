@@ -43,7 +43,11 @@ import android.net.Uri
 class GalleryActivity : AppCompatActivity(), SensorEventListener {
     companion object {
         const val PHOTO_VIEWER_REQUEST = 1002
+        private const val TAG = "GalleryActivity"
     }
+
+    // Memory manager for bitmap lifecycle tracking
+    private lateinit var memoryManager: MemoryManager
 
     // Data class for media thumbnails
     data class MediaThumbnail(
@@ -402,12 +406,18 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     } else {
                         // For videos, use streaming approach to avoid memory issues
                         try {
-                            val secureVideoManager = SecureVideoManager()
-                            secureVideoManager.generateVideoThumbnail(
-                                encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
-                                encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
-                                encryptionKey = key!!
-                            )
+                            val secureVideoManager = SecureVideoManager(this)
+                            val file = if (mediaItem.usesExternalStorage()) {
+                                File(mediaItem.filePath!!)
+                            } else {
+                                // For internal storage, create a temporary file
+                                val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
+                                tempFile.writeBytes(mediaItem.getEncryptedData())
+                                tempFile
+                            }
+                            
+                            // Note: This should be called from a coroutine, but for now we'll use a fallback
+                            VideoUtils.generateVideoThumbnailFromFile(file, key!!)
                         } catch (e: Exception) {
                             android.util.Log.e("SecureGallery", "Failed to generate streaming video thumbnail", e)
                             null
@@ -615,25 +625,30 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                             }
                         }
                         MediaType.VIDEO -> {
-                            // Use SecureVideoManager for streaming approach instead of loading entire video into memory
+                            // Use ThumbnailGenerator for consistent thumbnail handling
                             try {
-                                val secureVideoManager = SecureVideoManager()
-                                val thumbnailBitmap = secureVideoManager.generateVideoThumbnail(
-                                    encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
-                                    encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
-                                    encryptionKey = key!!
+                                val filePath = if (mediaItem.usesExternalStorage()) {
+                                    mediaItem.filePath!!
+                                } else {
+                                    // For internal storage, create a temporary file
+                                    val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
+                                    tempFile.writeBytes(mediaItem.getEncryptedData())
+                                    tempFile.absolutePath
+                                }
+                                
+                                val thumbnailPath = ThumbnailGenerator.generateVideoThumbnailFromFile(
+                                    this@GalleryActivity, 
+                                    filePath, 
+                                    mediaItem.id.toString(), 
+                                    galleryName, 
+                                    key
                                 )
                                 
-                                if (thumbnailBitmap != null) {
-                                    // Save the thumbnail using the new approach
-                                    val thumbnailBytes = bitmapToByteArray(thumbnailBitmap)
-                                    val encryptedThumbnail = CryptoUtils.encrypt(thumbnailBytes, key!!)
-                                    val thumbnailFile = File(thumbnailsDir, "${mediaItem.id}.jpg")
-                                    thumbnailFile.writeBytes(encryptedThumbnail)
-                                    android.util.Log.d("SecureGallery", "Generated streaming thumbnail for video: ${mediaItem.name}")
+                                if (thumbnailPath != null) {
+                                    android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
                                     processedCount++
                                 } else {
-                                    android.util.Log.w("SecureGallery", "Failed to generate streaming thumbnail for video: ${mediaItem.name}")
+                                    android.util.Log.w("SecureGallery", "Failed to generate thumbnail for video: ${mediaItem.name}")
                                 }
                             } catch (e: Exception) {
                                 android.util.Log.e("SecureGallery", "Out of memory while processing: ${mediaItem.name}. Forcing garbage collection.", e)
@@ -1144,6 +1159,9 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
         
+        // Initialize memory manager
+        memoryManager = MemoryManager(this)
+        
         // Initialize security features
         initializeSecurity()
         
@@ -1295,7 +1313,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                 
                 android.util.Log.d("SecureGallery", "onBindViewHolder position $position: mediaThumbnail = ${if (mediaThumbnail != null) "loaded" else "null"}")
                 
-                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode, position)
                 
                 // Trigger preloading for smooth scrolling
                 if (!isOrganizeMode && !isDeleteMode && gallery != null) {
@@ -1363,9 +1381,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
                 super.onViewRecycled(holder)
                 // Unmark bitmap as active when view is recycled
-                val mediaThumbnail = holder.mediaThumbnail
-                if (mediaThumbnail != null) {
-                    val cacheKey = "${mediaThumbnail.fileName}_${mediaThumbnail.fileSize}"
+                val cacheKey = holder.cacheKey
+                if (cacheKey != null) {
                     memoryManager.unmarkBitmapActive(cacheKey)
                 }
             }
@@ -1603,9 +1620,12 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
         private var currentBitmap: android.graphics.Bitmap? = null
         var mediaThumbnail: MediaThumbnail? = null
             private set
+        var cacheKey: String? = null
+            private set
         
-        fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false) {
+        fun bind(mediaThumbnail: MediaThumbnail?, isDeleteMode: Boolean = false, isSelected: Boolean = false, isOrganizeMode: Boolean = false, position: Int = -1) {
             this.mediaThumbnail = mediaThumbnail
+            this.cacheKey = if (position >= 0) "${position}_${mediaThumbnail?.mediaType}" else null
             val imageView = itemView.findViewById<android.widget.ImageView>(R.id.mediaThumbnail)
             val playIcon = itemView.findViewById<android.widget.ImageView>(R.id.playIcon)
             val durationText = itemView.findViewById<android.widget.TextView>(R.id.videoDuration)
@@ -1792,12 +1812,16 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     }
                     MediaType.VIDEO -> {
                         try {
-                            val secureVideoManager = SecureVideoManager()
-                            val thumbnail = secureVideoManager.generateVideoThumbnail(
-                                encryptedFile = if (mediaItem.usesExternalStorage()) File(mediaItem.filePath!!) else null,
-                                encryptedData = if (!mediaItem.usesExternalStorage()) mediaItem.getEncryptedData() else null,
-                                encryptionKey = key
-                            )
+                            val file = if (mediaItem.usesExternalStorage()) {
+                                File(mediaItem.filePath!!)
+                            } else {
+                                // For internal storage, create a temporary file
+                                val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
+                                tempFile.writeBytes(mediaItem.getEncryptedData())
+                                tempFile
+                            }
+                            
+                            val thumbnail = VideoUtils.generateVideoThumbnailFromFile(file, key)
                             val duration = VideoUtils.getVideoDuration(mediaItem, key)
                             MediaThumbnail(thumbnail, duration, mediaItem.mediaType)
                         } catch (e: Exception) {
@@ -1916,7 +1940,7 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
                     null
                 }
                 
-                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode)
+                holder.bind(mediaThumbnail, isDeleteMode, selectedPhotosForDeletion.contains(position), isOrganizeMode, position)
                 
                 if (isOrganizeMode) {
                     // In organize mode, disable clicks (only allow drag)
@@ -1964,9 +1988,8 @@ class GalleryActivity : AppCompatActivity(), SensorEventListener {
             override fun onViewRecycled(holder: MediaThumbnailViewHolder) {
                 super.onViewRecycled(holder)
                 // Unmark bitmap as active when view is recycled
-                val mediaThumbnail = holder.mediaThumbnail
-                if (mediaThumbnail != null) {
-                    val cacheKey = "${mediaThumbnail.fileName}_${mediaThumbnail.fileSize}"
+                val cacheKey = holder.cacheKey
+                if (cacheKey != null) {
                     memoryManager.unmarkBitmapActive(cacheKey)
                 }
             }
