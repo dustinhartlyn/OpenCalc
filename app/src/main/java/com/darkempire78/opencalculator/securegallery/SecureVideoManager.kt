@@ -229,9 +229,10 @@ class SecureVideoManager(private val context: Context) {
             thumbnail
             
         } catch (e: OutOfMemoryError) {
-            Log.e(TAG, "OutOfMemoryError generating standard thumbnail, falling back to lightweight", e)
+            Log.e(TAG, "OutOfMemoryError generating standard thumbnail", e)
             MemoryManager.forceMemoryCleanup()
-            generateLightweightThumbnail(encryptedFile, encryptionKey, maxWidth, maxHeight)
+            // Return null instead of calling non-existent method
+            null
         } catch (e: Exception) {
             Log.e(TAG, "Failed to generate standard thumbnail", e)
             null

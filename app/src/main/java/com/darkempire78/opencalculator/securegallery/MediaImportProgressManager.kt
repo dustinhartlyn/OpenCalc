@@ -5,6 +5,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.*
+import java.io.File
 
 /**
  * Comprehensive progress manager for media import operations
@@ -160,7 +161,7 @@ class MediaImportProgressManager(private val context: Context) {
                     )
                     
                     // Generate thumbnail with timeout to prevent hanging
-                    val thumbnailJob = async {
+                    val thumbnailJob = backgroundScope.async {
                         generateThumbnailSafely(encryptedFile, encryptionKey)
                     }
                     
@@ -366,10 +367,6 @@ class MediaImportProgressManager(private val context: Context) {
             "jpg", "jpeg", "png", "bmp", "gif", "webp" -> MediaType.PHOTO
             "mp4", "avi", "mov", "mkv", "webm", "3gp" -> MediaType.VIDEO
             else -> MediaType.PHOTO // Default to photo for unknown types
-        }
-    }
-            "mp4", "avi", "mov", "mkv", "webm" -> MediaType.VIDEO
-            else -> MediaType.PHOTO
         }
     }
     

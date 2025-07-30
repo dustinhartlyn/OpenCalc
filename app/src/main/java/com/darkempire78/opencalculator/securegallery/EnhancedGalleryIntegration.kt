@@ -255,21 +255,6 @@ class EnhancedGalleryIntegration(private val context: Context) {
     }
     
     /**
-     * Decrypt data using AES encryption (placeholder - integrate with existing crypto)
-     */
-    private fun decryptDataWithKey(encryptedData: ByteArray, encryptionKey: String): ByteArray {
-        // This should integrate with your existing CryptoUtils.decryptData method
-        // For now, return the data as-is (placeholder implementation)
-        return try {
-            // TODO: Replace with actual CryptoUtils.decryptData call
-            encryptedData
-        } catch (e: Exception) {
-            Log.e(TAG, "Decryption failed", e)
-            encryptedData
-        }
-    }
-    
-    /**
      * Mark thumbnail as active (in use by UI)
      */
     fun markThumbnailActive(cacheKey: String) {
@@ -471,7 +456,7 @@ class EnhancedGalleryIntegration(private val context: Context) {
         
         // Cleanup managers
         videoManager.cleanup()
-        memoryManager.cleanup()
+        memoryManager.forceMemoryCleanup()
         
         Log.d(TAG, "Enhanced gallery integration cleanup completed")
     }
