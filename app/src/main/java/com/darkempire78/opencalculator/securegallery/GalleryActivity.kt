@@ -1060,18 +1060,25 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onPause() {
+        android.util.Log.d("SecureGallery", "=== GalleryActivity onPause() ===")
+        android.util.Log.d("SecureGallery", "onPause: About to pause activity (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+        
         super.onPause()
         
         // Disable security monitoring during pause
         securityManager?.disable()
-        Log.d("SecureGallery", "onPause: Security monitoring disabled")
+        android.util.Log.d("SecureGallery", "onPause: Security monitoring disabled")
         
         // Don't immediately trigger security on pause - let other mechanisms handle it
         // This prevents false positives during startup and normal lifecycle events
-        Log.d("SecureGallery", "onPause: Activity paused (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+        android.util.Log.d("SecureGallery", "onPause: Activity paused - not triggering security")
     }
     
     override fun onStop() {
+        android.util.Log.d("SecureGallery", "=== GalleryActivity onStop() ===")
+        android.util.Log.d("SecureGallery", "onStop: Activity stopping (picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating)")
+        android.util.Log.d("SecureGallery", "onStop: Current security state - triggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
+        
         super.onStop()
         
         // onStop means the activity is no longer visible to the user
@@ -1092,34 +1099,49 @@ class GalleryActivity : AppCompatActivity() {
             Log.d("SecureGallery", "onStop: System activity transition - NOT triggering security")
         }
     }
+    
+    override fun finish() {
+        android.util.Log.d("SecureGallery", "=== GalleryActivity finish() CALLED ===")
+        android.util.Log.d("SecureGallery", "finish: Stack trace:")
+        android.util.Log.d("SecureGallery", android.util.Log.getStackTraceString(Exception("finish() called")))
+        android.util.Log.d("SecureGallery", "finish: Security state - triggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
+        super.finish()
+    }
 
     override fun onRestart() {
+        android.util.Log.d("SecureGallery", "=== GalleryActivity onRestart() ===")
+        android.util.Log.d("SecureGallery", "onRestart: Current thread: ${Thread.currentThread().name}")
+        android.util.Log.d("SecureGallery", "onRestart: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
+        
         super.onRestart()
-        Log.d("SecureGallery", "onRestart: Activity restarting, securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
         
         // IMPORTANT: onRestart() can be called during normal activity launch after PIN entry
         // We should NOT close the gallery here if the security trigger was recently cleared (PIN just validated)
         
         if (TempPinHolder.securityTriggered && !TempPinHolder.wasRecentlyCleared()) {
             // Only close if security is triggered AND it wasn't recently cleared by PIN validation
-            Log.d("SecureGallery", "onRestart: Security triggered and not recently cleared - closing gallery")
+            android.util.Log.d("SecureGallery", "onRestart: Security triggered and NOT recently cleared - CLOSING GALLERY")
+            android.util.Log.d("SecureGallery", "onRestart: About to call finish() - this will close the gallery")
             finish()
             return
         } else if (TempPinHolder.securityTriggered && TempPinHolder.wasRecentlyCleared()) {
-            Log.d("SecureGallery", "onRestart: Security triggered but was recently cleared by PIN validation - ignoring")
+            android.util.Log.d("SecureGallery", "onRestart: Security triggered but WAS recently cleared by PIN validation - IGNORING and continuing")
         } else {
-            Log.d("SecureGallery", "onRestart: No security trigger, proceeding normally")
+            android.util.Log.d("SecureGallery", "onRestart: No security trigger detected - continuing normally")
         }
+        
+        android.util.Log.d("SecureGallery", "onRestart: Completed successfully without closing gallery")
     }
     
     override fun onResume() {
-        super.onResume()
+        android.util.Log.d("SecureGallery", "=== GalleryActivity onResume() ===")
+        android.util.Log.d("SecureGallery", "onResume: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
         
-        Log.d("SecureGallery", "onResume: Resuming activity, securityTriggered=${TempPinHolder.securityTriggered}")
+        super.onResume()
         
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
-        Log.d("SecureGallery", "onResume: Security monitoring enabled")
+        android.util.Log.d("SecureGallery", "onResume: Security monitoring enabled")
         
         // Only refresh if we're returning from photo picker or if media viewer was NOT active
         // This prevents duplicate thumbnails when returning from photo viewer
@@ -1217,13 +1239,18 @@ class GalleryActivity : AppCompatActivity() {
     
     // SensorEventListener implementation for accelerometer
     override fun onCreate(savedInstanceState: Bundle?) {
+        android.util.Log.d("SecureGallery", "=== GalleryActivity onCreate() STARTED ===")
+        android.util.Log.d("SecureGallery", "onCreate: securityTriggered=${TempPinHolder.securityTriggered}, count=${TempPinHolder.getSecurityTriggerCount()}, recentlyCleared=${TempPinHolder.wasRecentlyCleared()}")
+        
         super.onCreate(savedInstanceState)
-        android.util.Log.d("SecureGallery", "GalleryActivity onCreate() started, securityTriggered=${TempPinHolder.securityTriggered}")
+        android.util.Log.d("SecureGallery", "onCreate: super.onCreate() completed")
+        
         setContentView(R.layout.activity_gallery)
+        android.util.Log.d("SecureGallery", "onCreate: setContentView completed")
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        android.util.Log.d("SecureGallery", "Screen keep-on flag set for gallery")
+        android.util.Log.d("SecureGallery", "onCreate: Screen keep-on flag set for gallery")
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)

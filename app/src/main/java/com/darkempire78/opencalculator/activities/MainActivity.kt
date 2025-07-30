@@ -1052,10 +1052,17 @@ class MainActivity : AppCompatActivity() {
             galleryPinBuffer = ""
             val gallery = com.darkempire78.opencalculator.securegallery.GalleryManager.findGalleryByPin(pin)
             if (gallery != null) {
+                android.util.Log.d("SecureGallery", "=== PIN VALIDATION SUCCESSFUL ===")
                 android.util.Log.d("SecureGallery", "Gallery unlocked with pin: $pin")
+                android.util.Log.d("SecureGallery", "Before clearSecurityTrigger - triggered=${com.darkempire78.opencalculator.securegallery.TempPinHolder.securityTriggered}, count=${com.darkempire78.opencalculator.securegallery.TempPinHolder.getSecurityTriggerCount()}")
+                
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.pin = pin
                 // Clear security trigger to allow gallery access
                 com.darkempire78.opencalculator.securegallery.TempPinHolder.clearSecurityTrigger()
+                
+                android.util.Log.d("SecureGallery", "After clearSecurityTrigger - triggered=${com.darkempire78.opencalculator.securegallery.TempPinHolder.securityTriggered}, count=${com.darkempire78.opencalculator.securegallery.TempPinHolder.getSecurityTriggerCount()}")
+                android.util.Log.d("SecureGallery", "About to launch GalleryActivity...")
+                
                 // Removed toast: Gallery unlocked!
                 // Clear calculator display as if "AC" was pressed
                 clearButton(view)
@@ -1065,7 +1072,9 @@ class MainActivity : AppCompatActivity() {
                 // Launch GalleryActivity to show notes/photos
                 val intent = android.content.Intent(this, com.darkempire78.opencalculator.securegallery.GalleryActivity::class.java)
                 intent.putExtra("gallery_name", gallery.name)
+                android.util.Log.d("SecureGallery", "Starting GalleryActivity intent...")
                 startActivity(intent)
+                android.util.Log.d("SecureGallery", "GalleryActivity intent started!")
             } else {
                 android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
                 failedPinAttempts++
