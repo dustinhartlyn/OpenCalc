@@ -285,9 +285,8 @@ class GalleryActivity : AppCompatActivity() {
                         else -> MediaType.PHOTO // Default to photo if unknown
                     }
                     
-                    if (key != null) {
-                        val inputStream = contentResolver.openInputStream(uri)
-                        if (inputStream != null) {
+                    val inputStream = contentResolver.openInputStream(uri)
+                    if (inputStream != null) {
                             val extension = when (mediaType) {
                                 MediaType.PHOTO -> ".jpg"
                                 MediaType.VIDEO -> ".mp4"
@@ -374,7 +373,6 @@ class GalleryActivity : AppCompatActivity() {
                                 deletableUris.add(uri)
                             }
                         }
-                    }
                     processedCount++
                 } catch (e: Exception) {
                     android.util.Log.e("SecureGallery", "Failed to encrypt media: $uri", e)
@@ -1030,8 +1028,8 @@ class GalleryActivity : AppCompatActivity() {
         val sortedIndices = selectedPhotosForDeletion.sortedDescending()
         
         for (index in sortedIndices) {
-            if (index < gallery.photos.size) {
-                gallery.photos.removeAt(index)
+            if (index < gallery.media.size) {
+                gallery.media.removeAt(index)
             }
         }
         
@@ -1082,7 +1080,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         if (key != null) {
             try {
@@ -1119,7 +1117,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         if (key != null) {
             android.util.Log.d("SecureGallery", "Decrypting ${gallery.notes.size} notes for display")
@@ -1301,7 +1299,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         // Check if media count has changed and we need a refresh
         val actualMediaCount = gallery.media.size
@@ -2294,20 +2292,20 @@ class GalleryActivity : AppCompatActivity() {
         
         when (sortOrder) {
             GallerySortOrder.NAME -> {
-                GallerySortUtils.sortPhotosByName(gallery.photos)
-                Toast.makeText(this, "Photos sorted by name", Toast.LENGTH_SHORT).show()
+                GallerySortUtils.sortMediaByName(gallery.media)
+                Toast.makeText(this, "Media sorted by name", Toast.LENGTH_SHORT).show()
             }
             GallerySortOrder.DATE -> {
-                GallerySortUtils.sortPhotosByDate(gallery.photos)
-                Toast.makeText(this, "Photos sorted by date", Toast.LENGTH_SHORT).show()
+                GallerySortUtils.sortMediaByDate(gallery.media)
+                Toast.makeText(this, "Media sorted by date", Toast.LENGTH_SHORT).show()
             }
             GallerySortOrder.CUSTOM -> {
                 if (gallery.customOrder.isNotEmpty()) {
-                    GallerySortUtils.sortPhotosByCustomOrder(gallery.photos, gallery.customOrder)
-                    Toast.makeText(this, "Photos sorted by custom order", Toast.LENGTH_SHORT).show()
+                    GallerySortUtils.sortMediaByCustomOrder(gallery.media, gallery.customOrder)
+                    Toast.makeText(this, "Media sorted by custom order", Toast.LENGTH_SHORT).show()
                 } else {
                     // Initialize custom order with current order
-                    gallery.customOrder = (0 until gallery.photos.size).toMutableList()
+                    gallery.customOrder = (0 until gallery.media.size).toMutableList()
                     Toast.makeText(this, "Custom order initialized", Toast.LENGTH_SHORT).show()
                 }
             }
@@ -2326,21 +2324,20 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
-        android.util.Log.d("SecureGallery", "Organize mode setup: pin='$pin', salt=${salt?.contentToString()}, galleryName='$galleryName'")
+        android.util.Log.d("SecureGallery", "Organize mode setup: pin='$pin', salt=${salt.contentToString()}, galleryName='$galleryName'")
         android.util.Log.d("SecureGallery", "Gallery details: id=${gallery.id}, mediaCount=${gallery.media.size}, hasHash=${gallery.pinHash != null}")
         
         if (key == null) {
-            android.util.Log.e("SecureGallery", "Cannot derive key: pin='$pin', salt is null=${salt == null}")
+            android.util.Log.e("SecureGallery", "Cannot derive key: pin='$pin'")
             Toast.makeText(this, "Cannot organize media: decryption key unavailable", Toast.LENGTH_LONG).show()
             return
         }
         
         organizeMedia.clear()
         organizeMedia.addAll(gallery.media.mapIndexed { index, mediaItem ->
-            if (key != null) {
-                when (mediaItem.mediaType) {
+            when (mediaItem.mediaType) {
                     MediaType.PHOTO -> {
                         try {
                             val encryptedData = mediaItem.getEncryptedData()
@@ -2391,10 +2388,6 @@ class GalleryActivity : AppCompatActivity() {
                         }
                     }
                 }
-            } else {
-                android.util.Log.w("SecureGallery", "No key available for media decryption in organize mode")
-                null
-            }
         })
         
         android.util.Log.d("SecureGallery", "Organize mode: ${organizeMedia.size} media items prepared (${organizeMedia.count { it != null }} non-null)")
@@ -2483,7 +2476,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         photosAdapter = object : RecyclerView.Adapter<MediaThumbnailViewHolder>() {
             override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MediaThumbnailViewHolder {
@@ -2569,8 +2562,8 @@ class GalleryActivity : AppCompatActivity() {
                 // Only allow drag in organize mode
                 if (!isOrganizeMode) return false
                 
-                val fromPosition = viewHolder.adapterPosition
-                val toPosition = target.adapterPosition
+                val fromPosition = viewHolder.bindingAdapterPosition
+                val toPosition = target.bindingAdapterPosition
                 
                 // Move item in the gallery photos list
                 val galleryName = intent.getStringExtra("gallery_name") ?: return false
@@ -2617,8 +2610,8 @@ class GalleryActivity : AppCompatActivity() {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         
-        if (gallery.photos.isEmpty()) {
-            Toast.makeText(this, "No photos to export", Toast.LENGTH_SHORT).show()
+        if (gallery.media.isEmpty()) {
+            Toast.makeText(this, "No media to export", Toast.LENGTH_SHORT).show()
             return
         }
         
@@ -2631,7 +2624,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         if (key == null) {
             Toast.makeText(this, "Unable to decrypt photos for export", Toast.LENGTH_LONG).show()
@@ -2644,10 +2637,10 @@ class GalleryActivity : AppCompatActivity() {
         try {
             val documentTree = DocumentsContract.buildDocumentUriUsingTree(directoryUri, DocumentsContract.getTreeDocumentId(directoryUri))
             
-            for ((index, photo) in gallery.photos.withIndex()) {
+            for ((index, media) in gallery.media.withIndex()) {
                 try {
-                    // Decrypt photo
-                    val encryptedData = photo.encryptedData
+                    // Decrypt media
+                    val encryptedData = media.encryptedData
                     val iv = encryptedData.copyOfRange(0, 16)
                     val ct = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = try {
@@ -2725,7 +2718,7 @@ class GalleryActivity : AppCompatActivity() {
                     name = gallery.name,
                     salt = gallery.salt,
                     pinHash = gallery.pinHash,
-                    photos = gallery.photos,
+                    photos = gallery.media, // Legacy compatibility
                     media = media, // Include all media items
                     videoThumbnails = cachedThumbnails, // Include cached thumbnails
                     notes = gallery.notes,
@@ -2839,8 +2832,8 @@ class GalleryActivity : AppCompatActivity() {
                 customOrder = importData.customOrder.toMutableList()
             )
             
-            // Add photos and notes (legacy support)
-            newGallery.photos.addAll(importData.photos)
+            // Add photos and notes (legacy support)  
+            newGallery.media.addAll(importData.photos)
             newGallery.notes.addAll(importData.notes)
             
             // Add media items if available (version 2+)
