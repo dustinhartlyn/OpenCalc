@@ -11,6 +11,7 @@ object TempPinHolder {
         get() = securityTriggerCount > 0
     
     fun clear() { 
+        android.util.Log.d("SecureGallery", "TempPinHolder.clear() called - PIN was: '${pin ?: "null"}', clearing now")
         pin = null
         securityTriggerCount = 0
     }

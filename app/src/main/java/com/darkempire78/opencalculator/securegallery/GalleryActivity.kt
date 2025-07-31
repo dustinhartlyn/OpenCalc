@@ -162,6 +162,9 @@ class GalleryActivity : AppCompatActivity() {
 
     // Handler for Add Media menu item (photos and videos)
     private fun addMediaToGallery() {
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "addMediaToGallery: PIN status before launching picker - pin='$currentPin', isEmpty=${currentPin.isEmpty()}")
+        
         isPhotoPickerActive = true
         addMediaLauncher.launch("*/*") // Accept both images and videos
     }
@@ -1304,6 +1307,10 @@ class GalleryActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_gallery)
+
+        // Debug: Log PIN status at activity start
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "onCreate: PIN status - pin='$currentPin', isEmpty=${currentPin.isEmpty()}")
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
         window.addFlags(
