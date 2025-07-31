@@ -164,6 +164,14 @@ class GalleryActivity : AppCompatActivity() {
         val salt = gallery.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
+        android.util.Log.d("SecureGallery", "handleSelectedMedia - galleryName: $galleryName, pin: '$pin', salt: ${salt != null}, key: ${key != null}")
+        
+        if (key == null) {
+            android.util.Log.e("SecureGallery", "Cannot import media: key is null (pin='$pin', salt=${salt != null})")
+            android.widget.Toast.makeText(this, "Error: Unable to encrypt media. Please try again.", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        
         // Show loading dialog for media import
         val loadingDialog = android.app.ProgressDialog(this).apply {
             setTitle("Importing Media")
@@ -714,6 +722,12 @@ class GalleryActivity : AppCompatActivity() {
     
     private fun finishMediaImport(encryptedMedia: List<SecureMedia>, deletableUris: List<android.net.Uri>, originalUris: List<android.net.Uri>, gallery: Gallery, key: javax.crypto.spec.SecretKeySpec?) {
         
+        if (key == null) {
+            android.util.Log.e("SecureGallery", "Cannot finish media import: key is null")
+            android.widget.Toast.makeText(this, "Error: Unable to complete media import", android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        
         // Add encrypted media to gallery
         gallery.media.addAll(encryptedMedia)
         // Save gallery data (this will persist the added media)
@@ -804,7 +818,7 @@ class GalleryActivity : AppCompatActivity() {
             
             // After thumbnail generation is complete, load them on UI thread
             runOnUiThread {
-                loadGeneratedThumbnails(encryptedMedia, galleryName, key!!)
+                loadGeneratedThumbnails(encryptedMedia, galleryName, key)
                 
                 // Only prompt to delete originals if we have deletable URIs
                 if (deletableUris.isNotEmpty()) {
