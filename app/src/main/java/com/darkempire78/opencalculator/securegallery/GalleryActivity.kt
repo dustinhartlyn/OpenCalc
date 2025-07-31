@@ -87,6 +87,7 @@ class GalleryActivity : AppCompatActivity() {
     private var isMediaViewerActive = false
     private var isNoteEditorActive = false  // Track when note editor is open
     private var isRecreating = false
+    private var isOpeningNewGallery = false  // Track when we're finishing to open a new gallery
     private var securityStartTime = 0L
     private var resumeTime = 0L
     
@@ -1200,10 +1201,12 @@ class GalleryActivity : AppCompatActivity() {
         
         cleanupSecurity()
         
-        // Only clear PIN when activity is actually finishing, not when temporarily destroyed
-        if (isFinishing) {
+        // Only clear PIN when activity is actually finishing and not opening a new gallery
+        if (isFinishing && !isOpeningNewGallery) {
             android.util.Log.d("SecureGallery", "Activity finishing - clearing PIN")
             TempPinHolder.clear()
+        } else if (isFinishing && isOpeningNewGallery) {
+            android.util.Log.d("SecureGallery", "Activity finishing to open new gallery - keeping PIN")
         } else {
             android.util.Log.d("SecureGallery", "Activity destroyed but not finishing - keeping PIN for recreation")
         }
@@ -1792,6 +1795,7 @@ class GalleryActivity : AppCompatActivity() {
                     // Store the PIN in TempPinHolder so the new gallery can access it
                     TempPinHolder.pin = pin
                     // Close current and open new gallery
+                    isOpeningNewGallery = true  // Flag to prevent PIN clearing
                     val intent = intent
                     intent.putExtra("gallery_name", name)
                     finish()
