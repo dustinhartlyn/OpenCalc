@@ -1713,6 +1713,8 @@ class GalleryActivity : AppCompatActivity() {
                 val result = com.darkempire78.opencalculator.securegallery.GalleryManager.createGallery(pin, name, securityLevel)
                 if (result) {
                     Toast.makeText(this, "Gallery created", Toast.LENGTH_SHORT).show()
+                    // Store the PIN in TempPinHolder so the new gallery can access it
+                    TempPinHolder.pin = pin
                     // Close current and open new gallery
                     val intent = intent
                     intent.putExtra("gallery_name", name)
