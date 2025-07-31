@@ -85,6 +85,7 @@ class GalleryActivity : AppCompatActivity() {
     private var securityManager: SecurityManager? = null
     private var isPhotoPickerActive = false
     private var isMediaViewerActive = false
+    private var isNoteEditorActive = false  // Track when note editor is open
     private var isRecreating = false
     private var securityStartTime = 0L
     private var resumeTime = 0L
@@ -116,6 +117,7 @@ class GalleryActivity : AppCompatActivity() {
     
     // Activity result launcher for note editor
     private val noteEditorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        isNoteEditorActive = false // Reset the flag when note editor returns
         if (result.resultCode == RESULT_OK) {
             val title = result.data?.getStringExtra("note_title") ?: ""
             val body = result.data?.getStringExtra("note_body") ?: ""
@@ -975,8 +977,9 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun openNoteEditor(noteIndex: Int, title: String, body: String) {
+        isNoteEditorActive = true // Set flag when launching note editor
         val intent = Intent(this, NoteEditorActivity::class.java)
-        intent.putExtra("gallery_name", intent.getStringExtra("gallery_name"))
+        intent.putExtra("gallery_name", this.intent.getStringExtra("gallery_name"))
         intent.putExtra("note_index", noteIndex)
         intent.putExtra("note_title", title)
         intent.putExtra("note_body", body)
@@ -1148,7 +1151,9 @@ class GalleryActivity : AppCompatActivity() {
     override fun onRestart() {
         super.onRestart()
         
-        if (TempPinHolder.securityTriggered && !TempPinHolder.wasRecentlyCleared()) {
+        // Don't trigger security when returning from legitimate app activities
+        if (TempPinHolder.securityTriggered && !TempPinHolder.wasRecentlyCleared() && 
+            !isPhotoPickerActive && !isMediaViewerActive && !isNoteEditorActive) {
             finish()
             return
         }
