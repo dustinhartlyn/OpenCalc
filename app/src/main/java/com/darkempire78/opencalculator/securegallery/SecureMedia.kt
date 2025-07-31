@@ -3,11 +3,6 @@ package com.darkempire78.opencalculator.securegallery
 import java.util.UUID
 import java.io.Serializable
 
-// Media types supported by the secure gallery
-enum class MediaType {
-    PHOTO, VIDEO
-}
-
 // Data model for encrypted media (photos and videos)
 class SecureMedia(
     val id: UUID = UUID.randomUUID(),
