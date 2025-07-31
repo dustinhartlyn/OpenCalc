@@ -136,9 +136,6 @@ class MainActivity : AppCompatActivity() {
                         val pinHash = CryptoUtils.generatePinHash("1111", gallery.salt)
                         gallery.pinHash = pinHash
                         needsSave = true
-                        android.util.Log.d("SecureGallery", "Migrated default gallery to new PIN hash system.")
-                    } else {
-                        android.util.Log.w("SecureGallery", "Found gallery '${gallery.name}' without PIN hash - cannot migrate without original PIN.")
                     }
                 }
             }
@@ -146,7 +143,7 @@ class MainActivity : AppCompatActivity() {
                 GalleryManager.saveGalleries()
             }
         } catch (e: Exception) {
-            android.util.Log.e("SecureGallery", "Error during gallery migration: ${e.message}")
+            // Silent fallback - gallery migration failed
         }
         
         // --- Secure Gallery: Add default gallery with pin "1111" if none exist ---
@@ -155,15 +152,10 @@ class MainActivity : AppCompatActivity() {
                 val defaultPin = "1111"
                 // Create the default gallery using the GalleryManager's createGallery method
                 // which properly handles PIN hashing
-                val success = GalleryManager.createGallery(defaultPin, "Default Gallery")
-                if (success) {
-                    android.util.Log.d("SecureGallery", "Default gallery created with pin 1111.")
-                } else {
-                    android.util.Log.e("SecureGallery", "Failed to create default gallery.")
-                }
+                GalleryManager.createGallery(defaultPin, "Default Gallery")
             }
         } catch (e: Exception) {
-            android.util.Log.e("SecureGallery", "Failed to create default gallery: ${e.message}")
+            // Silent fallback - default gallery creation failed
         }
 
         // Enable the possibility to show the activity on the lock screen
@@ -831,13 +823,10 @@ class MainActivity : AppCompatActivity() {
     fun keyDigitPadMappingToDisplay(view: View) {
         val digit = (view as Button).text.toString()
         if (isGalleryPinEntry) {
-            android.util.Log.d("SecureGallery", "Pin entry active. Digit pressed: $digit")
             if (digit.all { it.isDigit() }) {
                 galleryPinBuffer += digit
-                android.util.Log.d("SecureGallery", "Pin buffer updated: $galleryPinBuffer")
             } else {
                 // Non-digit entered, cancel pin entry
-                android.util.Log.d("SecureGallery", "Non-digit entered, cancelling pin entry.")
                 isGalleryPinEntry = false
                 galleryPinBuffer = ""
             }
@@ -937,7 +926,6 @@ class MainActivity : AppCompatActivity() {
         if (binding.input.text.isEmpty()) {
             isGalleryPinEntry = true
             galleryPinBuffer = ""
-            android.util.Log.d("SecureGallery", "Multiply pressed with blank input. Pin entry started.")
         }
         addSymbol(view, "×")
     }
@@ -1045,7 +1033,6 @@ class MainActivity : AppCompatActivity() {
                 addSymbol(view, "!")
                 return
             }
-            android.util.Log.d("SecureGallery", "Factorial pressed. Pin buffer: $galleryPinBuffer")
             // Try to access gallery with entered pin
             val pin = galleryPinBuffer
             isGalleryPinEntry = false
@@ -1071,7 +1058,6 @@ class MainActivity : AppCompatActivity() {
                     startActivity(intent)
                 }, 200) // 200ms delay
             } else {
-                android.util.Log.d("SecureGallery", "Gallery unlock failed. Incorrect pin: $pin")
                 failedPinAttempts++
                 if (failedPinAttempts >= 3) {
                     pinLockoutEndTime = System.currentTimeMillis() + 3 * 60 * 1000 // 3 minutes
@@ -1080,7 +1066,6 @@ class MainActivity : AppCompatActivity() {
                 addSymbol(view, "!")
             }
         } else {
-            android.util.Log.d("SecureGallery", "Factorial pressed. Not in pin entry mode or buffer empty.")
             addSymbol(view, "!")
         }
     }

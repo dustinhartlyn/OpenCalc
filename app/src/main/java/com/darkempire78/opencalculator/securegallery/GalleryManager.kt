@@ -39,7 +39,6 @@ object GalleryManager {
         )
         addGallery(newGallery)
         saveGalleries()
-        android.util.Log.d("SecureGallery", "Gallery created: $name with pin $pin, security level $securityLevel")
         return true
     }
 
@@ -56,7 +55,6 @@ object GalleryManager {
         }
         gallery.name = newName
         saveGalleries()
-        android.util.Log.d("SecureGallery", "Gallery renamed to $newName")
         return true
     }
 
@@ -69,7 +67,6 @@ object GalleryManager {
         }
         galleries.remove(gallery)
         saveGalleries()
-        android.util.Log.d("SecureGallery", "Gallery deleted: ${gallery.name}")
         return true
     }
 
@@ -77,11 +74,9 @@ object GalleryManager {
         for (gallery in galleries) {
             // Use the secure PIN hash verification
             if (gallery.pinHash != null && CryptoUtils.verifyPin(pin, gallery.salt, gallery.pinHash!!)) {
-                android.util.Log.d("SecureGallery", "Pin correct for gallery '${gallery.name}'")
                 return gallery
             }
         }
-        android.util.Log.d("SecureGallery", "No gallery found with the provided pin")
         return null
     }
 
@@ -97,7 +92,6 @@ object GalleryManager {
             ObjectOutputStream(file.outputStream()).use { oos ->
                 oos.writeObject(galleries.toList())
             }
-            android.util.Log.d("SecureGallery", "Galleries saved successfully")
         } catch (e: Exception) {
             android.util.Log.e("SecureGallery", "Failed to save galleries", e)
         }

@@ -111,7 +111,6 @@ class GalleryActivity : AppCompatActivity() {
     // Activity result launcher for adding multiple pictures and videos
     private val addMediaLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         val currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "addMediaLauncher callback - PIN='$currentPin', isEmpty=${currentPin.isEmpty()}, uris.size=${uris.size}")
         isPhotoPickerActive = false // Reset the flag when picker returns
         if (uris.isNotEmpty()) {
             handleSelectedMedia(uris)
@@ -121,7 +120,6 @@ class GalleryActivity : AppCompatActivity() {
     // Activity result launcher for note editor
     private val noteEditorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         isNoteEditorActive = false // Reset the flag when note editor returns
-        android.util.Log.d("SecureGallery", "Note editor returned with result code: ${result.resultCode}")
         
         if (result.resultCode == RESULT_OK) {
             val title = result.data?.getStringExtra("note_title") ?: ""
@@ -129,16 +127,9 @@ class GalleryActivity : AppCompatActivity() {
             val noteIndex = result.data?.getIntExtra("note_index", -1) ?: -1
             val isNewNote = result.data?.getBooleanExtra("is_new_note", true) ?: true
             
-            android.util.Log.d("SecureGallery", "Note editor data - title: '$title', body: '$body', noteIndex: $noteIndex, isNewNote: $isNewNote")
-            
             if (title.isNotEmpty() || body.isNotEmpty()) {
-                android.util.Log.d("SecureGallery", "Note has content, calling handleNoteSave")
                 handleNoteSave(title, body, noteIndex, isNewNote)
-            } else {
-                android.util.Log.d("SecureGallery", "Note is empty, not saving")
             }
-        } else {
-            android.util.Log.d("SecureGallery", "Note editor was canceled or returned with error code")
         }
     }
     
@@ -175,13 +166,10 @@ class GalleryActivity : AppCompatActivity() {
         }
         
         var currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "addMediaToGallery: PIN status before launching picker - pin='$currentPin', isEmpty=${currentPin.isEmpty()}")
         
         // If PIN is empty, this means the activity was recreated and PIN was lost
         // We need to prompt the user to re-enter the PIN
         if (currentPin.isEmpty()) {
-            android.util.Log.d("SecureGallery", "PIN is empty - prompting user for re-authentication")
-            
             // Show PIN dialog for re-authentication
             val builder = android.app.AlertDialog.Builder(this)
             builder.setTitle("Re-enter PIN")
@@ -196,13 +184,11 @@ class GalleryActivity : AppCompatActivity() {
                 if (gallery.pinHash != null && CryptoUtils.verifyPin(enteredPin, gallery.salt, gallery.pinHash!!)) {
                     // Correct PIN - store it and proceed
                     TempPinHolder.pin = enteredPin
-                    android.util.Log.d("SecureGallery", "PIN re-authenticated successfully - launching photo picker")
                     
                     // Now launch the photo picker
                     isPhotoPickerActive = true
                     addMediaLauncher.launch("*/*")
                 } else {
-                    android.util.Log.d("SecureGallery", "PIN re-authentication failed")
                     android.widget.Toast.makeText(this, "Incorrect PIN", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
@@ -214,7 +200,6 @@ class GalleryActivity : AppCompatActivity() {
             builder.show()
         } else {
             // PIN is available, proceed directly
-            android.util.Log.d("SecureGallery", "PIN available - launching photo picker directly")
             isPhotoPickerActive = true
             addMediaLauncher.launch("*/*") // Accept both images and videos
         }
@@ -227,10 +212,8 @@ class GalleryActivity : AppCompatActivity() {
         val salt = gallery.salt
         val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
-        android.util.Log.d("SecureGallery", "handleSelectedMedia - galleryName: $galleryName, pin: '$pin', salt: true, key: ${key != null}")
         
         if (key == null) {
-            android.util.Log.e("SecureGallery", "Cannot import media: key is null (pin='$pin', salt=true)")
             android.widget.Toast.makeText(this, "Error: Unable to encrypt media. Please try again.", android.widget.Toast.LENGTH_LONG).show()
             return
         }
@@ -414,7 +397,6 @@ class GalleryActivity : AppCompatActivity() {
             
             if (File(thumbnailPath).exists()) {
                 // Load the pre-generated encrypted thumbnail
-                android.util.Log.d("SecureGallery", "Loading encrypted thumbnail for ${mediaItem.name}")
                 val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                 val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
                     VideoUtils.getVideoDuration(mediaItem, key)
@@ -585,7 +567,7 @@ class GalleryActivity : AppCompatActivity() {
     
     // Load only initial thumbnails quickly, then load rest in background
     private fun loadInitialThumbnails(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
-        android.util.Log.d("SecureGallery", "=== STARTING THUMBNAIL LOADING FOR ${media.size} MEDIA ITEMS ===")
+        // Start thumbnail loading in background
         
         // Show loading indicator in the UI instead of blocking dialog
         if (media.isNotEmpty()) {
@@ -607,24 +589,22 @@ class GalleryActivity : AppCompatActivity() {
             // Pre-fill with nulls for all media items
             repeat(media.size) { decryptedMedia.add(null) }
             
-            android.util.Log.d("SecureGallery", "Pre-filled decryptedMedia with ${decryptedMedia.size} null entries")
+            // Pre-fill decryptedMedia with null entries
             
             // Notify adapter immediately so it knows the full item count
             photosAdapter?.notifyDataSetChanged()
             
-            android.util.Log.d("SecureGallery", "Adapter notified of ${decryptedMedia.size} items")
         }
         
         // Load thumbnails in background without any artificial limits
         thumbnailExecutor.execute {
-            android.util.Log.d("SecureGallery", "Background thumbnail loading started")
+            // Start background thumbnail loading
             
             var loadedCount = 0
             val updateBatchSize = 3 // Update UI every 3 thumbnails to reduce main thread pressure
             
             media.forEachIndexed { index, mediaItem ->
                 try {
-                    android.util.Log.d("SecureGallery", "Loading thumbnail $index/${media.size}: ${mediaItem.name} (${mediaItem.mediaType})")
                     
                     val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
                     if (thumbnail != null) {
@@ -635,7 +615,6 @@ class GalleryActivity : AppCompatActivity() {
                                 if (index % updateBatchSize == 0 || index == media.size - 1) {
                                     photosAdapter?.notifyItemChanged(index)
                                 }
-                                android.util.Log.d("SecureGallery", "✓ Successfully set thumbnail at position $index")
                                 
                                 loadedCount++
                                 // Update loading indicator less frequently
@@ -643,12 +622,9 @@ class GalleryActivity : AppCompatActivity() {
                                     galleryLoadingIndicator?.progress = loadedCount
                                     galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
                                 }
-                            } else {
-                                android.util.Log.e("SecureGallery", "✗ Index $index out of bounds for decryptedMedia size ${decryptedMedia.size}")
                             }
                         }
                     } else {
-                        android.util.Log.w("SecureGallery", "✗ Failed to load thumbnail for position $index: ${mediaItem.name}")
                         runOnUiThread {
                             loadedCount++
                             // Update progress even for failed thumbnails, but less frequently
@@ -663,7 +639,6 @@ class GalleryActivity : AppCompatActivity() {
                     Thread.sleep(50) // Increased from 25ms to reduce main thread pressure
                     
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "✗ Exception loading thumbnail $index: ${mediaItem.name}", e)
                     runOnUiThread {
                         loadedCount++
                         // Update progress even for failed thumbnails, but less frequently
@@ -675,12 +650,9 @@ class GalleryActivity : AppCompatActivity() {
                 }
             }
             
-            android.util.Log.d("SecureGallery", "=== THUMBNAIL LOADING COMPLETED ===")
-            
             // Final comprehensive UI update
             runOnUiThread {
                 val actualLoadedCount = decryptedMedia.count { it != null }
-                android.util.Log.d("SecureGallery", "FINAL STATUS: ${decryptedMedia.size} total slots, $actualLoadedCount loaded thumbnails")
                 
                 // Final batch update - notify all items at once for efficiency
                 photosAdapter?.notifyDataSetChanged()
@@ -695,18 +667,14 @@ class GalleryActivity : AppCompatActivity() {
                 loadingContainer?.visibility = android.view.View.GONE
                 galleryLoadingIndicator?.visibility = android.view.View.GONE
                 galleryLoadingText?.visibility = android.view.View.GONE
-                
-                android.util.Log.d("SecureGallery", "Forced complete UI refresh and loading indicator hidden")
             }
         }
     }
 
     private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
-        android.util.Log.d("SecureGallery", "loadThumbnailsAsync called with ${media.size} media items")
         Thread {
             // Find the starting index for new media
             val startIndex = decryptedMedia.size
-            android.util.Log.d("SecureGallery", "Adding new media starting at index $startIndex")
             
             // First extend the decryptedMedia list to accommodate new items
             // BUT ensure we don't exceed the actual media count in the gallery
@@ -720,9 +688,6 @@ class GalleryActivity : AppCompatActivity() {
                 if (itemsToAdd > 0) {
                     repeat(itemsToAdd) { decryptedMedia.add(null) }
                     photosAdapter?.notifyDataSetChanged()
-                    android.util.Log.d("SecureGallery", "Extended decryptedMedia to size ${decryptedMedia.size} (max: $maxSize)")
-                } else {
-                    android.util.Log.d("SecureGallery", "No extension needed - decryptedMedia: ${decryptedMedia.size}, maxSize: $maxSize")
                 }
             }
             
@@ -730,11 +695,8 @@ class GalleryActivity : AppCompatActivity() {
             media.forEachIndexed { localIndex, mediaItem ->
                 val globalIndex = startIndex + localIndex
                 if (globalIndex >= maxSize) {
-                    android.util.Log.w("SecureGallery", "Skipping thumbnail at position $globalIndex - exceeds max size $maxSize")
                     return@forEachIndexed
                 }
-                
-                android.util.Log.d("SecureGallery", "Loading new thumbnail at position $globalIndex: ${mediaItem.name}")
                 
                 val thumbnail = loadThumbnailOptimized(mediaItem, key, globalIndex)
                 if (thumbnail != null) {
@@ -742,38 +704,30 @@ class GalleryActivity : AppCompatActivity() {
                         if (globalIndex < decryptedMedia.size) {
                             decryptedMedia[globalIndex] = thumbnail
                             photosAdapter?.notifyItemChanged(globalIndex)
-                            android.util.Log.d("SecureGallery", "Set new thumbnail at position $globalIndex")
                         }
                     }
                 }
                 
                 Thread.sleep(50)
             }
-            
-            android.util.Log.d("SecureGallery", "Completed loading ${media.size} new thumbnails")
         }.start()
     }
     
     // Load missing thumbnails within the existing range (for gaps)
     private fun loadMissingThumbnailsInRange(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
         Thread {
-            android.util.Log.d("SecureGallery", "Loading missing thumbnails in range: ${media.size} media items")
             
             media.forEachIndexed { index, mediaItem ->
                 if (index < decryptedMedia.size && decryptedMedia[index] == null) {
-                    android.util.Log.d("SecureGallery", "Loading missing thumbnail at position $index")
                     val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
                     if (thumbnail != null) {
                         runOnUiThread {
                             decryptedMedia[index] = thumbnail
                             photosAdapter?.notifyItemChanged(index)
-                            android.util.Log.d("SecureGallery", "Updated missing thumbnail at position $index")
                         }
                     }
                 }
             }
-            
-            android.util.Log.d("SecureGallery", "Finished loading missing thumbnails")
         }.start()
     }
     
@@ -820,7 +774,6 @@ class GalleryActivity : AppCompatActivity() {
             var processedCount = 0
             encryptedMedia.forEachIndexed { index, mediaItem ->
                 try {
-                    android.util.Log.d("SecureGallery", "Processing ${index + 1}/${encryptedMedia.size}: ${mediaItem.name} (${mediaItem.mediaType})")
                     
                     when (mediaItem.mediaType) {
                         MediaType.PHOTO -> {
@@ -833,10 +786,7 @@ class GalleryActivity : AppCompatActivity() {
                             // Generate encrypted thumbnail for photo
                             val thumbnailPath = ThumbnailGenerator.generatePhotoThumbnail(this@GalleryActivity, decryptedBytes, mediaItem.id.toString(), galleryName, key)
                             if (thumbnailPath != null) {
-                                android.util.Log.d("SecureGallery", "Generated thumbnail for photo: ${mediaItem.name}")
                                 processedCount++
-                            } else {
-                                android.util.Log.w("SecureGallery", "Failed to generate thumbnail for photo: ${mediaItem.name}")
                             }
                         }
                         MediaType.VIDEO -> {
@@ -860,13 +810,9 @@ class GalleryActivity : AppCompatActivity() {
                                 )
                                 
                                 if (thumbnailPath != null) {
-                                    android.util.Log.d("SecureGallery", "Generated thumbnail for video: ${mediaItem.name}")
                                     processedCount++
-                                } else {
-                                    android.util.Log.w("SecureGallery", "Failed to generate thumbnail for video: ${mediaItem.name}")
                                 }
                             } catch (e: Exception) {
-                                android.util.Log.e("SecureGallery", "Out of memory while processing: ${mediaItem.name}. Forcing garbage collection.", e)
                                 // Force garbage collection
                                 System.gc()
                                 Thread.sleep(500)
@@ -878,7 +824,6 @@ class GalleryActivity : AppCompatActivity() {
                     runOnUiThread {
                         // Show progress to user
                         val progress = "${processedCount}/${encryptedMedia.size} thumbnails processed"
-                        android.util.Log.d("SecureGallery", progress)
                     }
                     
                     // Force garbage collection and add delay between items to prevent memory buildup
@@ -949,7 +894,6 @@ class GalleryActivity : AppCompatActivity() {
     
     // Load thumbnails after they've been generated in background
     private fun loadGeneratedThumbnails(encryptedMedia: List<SecureMedia>, galleryName: String, key: javax.crypto.spec.SecretKeySpec) {
-        android.util.Log.d("SecureGallery", "Loading generated thumbnails for ${encryptedMedia.size} new media items")
         
         // Find the starting position for new media in the decryptedMedia list
         val galleryName = intent.getStringExtra("gallery_name") ?: return
@@ -981,7 +925,6 @@ class GalleryActivity : AppCompatActivity() {
                     decryptedMedia[globalIndex] = thumbnail
                     photosAdapter?.notifyItemChanged(globalIndex)
                     
-                    android.util.Log.d("SecureGallery", "Set new thumbnail at position $globalIndex for: ${mediaItem.name}")
                 } else {
                     android.util.Log.w("SecureGallery", "Thumbnail file not found for: ${mediaItem.name}")
                 }
@@ -990,7 +933,6 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
         
-        android.util.Log.d("SecureGallery", "Completed loading ${encryptedMedia.size} new thumbnails. Total decryptedMedia size: ${decryptedMedia.size}")
     }
 
     private fun enterDeleteMode() {
@@ -1104,7 +1046,6 @@ class GalleryActivity : AppCompatActivity() {
                 }
                 
                 GalleryManager.saveGalleries()
-                android.util.Log.d("SecureGallery", "Note saved, refreshing display - Gallery has ${gallery.notes.size} notes")
                 
                 // Refresh the notes display without recreating the activity
                 runOnUiThread {
@@ -1118,7 +1059,6 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun refreshNotesDisplay() {
-        android.util.Log.d("SecureGallery", "refreshNotesDisplay() called")
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
@@ -1126,7 +1066,6 @@ class GalleryActivity : AppCompatActivity() {
         val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
         if (key != null) {
-            android.util.Log.d("SecureGallery", "Decrypting ${gallery.notes.size} notes for display")
             // Decrypt and display notes
             decryptedNotes.clear()
             for (note in gallery.notes) {
@@ -1152,7 +1091,6 @@ class GalleryActivity : AppCompatActivity() {
                 }
             }
             
-            android.util.Log.d("SecureGallery", "Decrypted ${decryptedNotes.size} notes, notifying adapter")
             // Update the notes adapter
             notesAdapter?.notifyDataSetChanged() ?: android.util.Log.w("SecureGallery", "Notes adapter is null!")
         } else {
@@ -1183,7 +1121,6 @@ class GalleryActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         val currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "GalleryActivity onDestroy() called - PIN='$currentPin', isFinishing=$isFinishing, isPhotoPickerActive=$isPhotoPickerActive")
         deleteDialog?.dismiss()
         deleteDialog = null
         
@@ -1221,12 +1158,9 @@ class GalleryActivity : AppCompatActivity() {
         
         // Only clear PIN when activity is actually finishing and not opening a new gallery
         if (isFinishing && !isOpeningNewGallery) {
-            android.util.Log.d("SecureGallery", "Activity finishing - clearing PIN")
             TempPinHolder.clear()
         } else if (isFinishing && isOpeningNewGallery) {
-            android.util.Log.d("SecureGallery", "Activity finishing to open new gallery - keeping PIN")
         } else {
-            android.util.Log.d("SecureGallery", "Activity destroyed but not finishing - keeping PIN for recreation")
         }
         
         // Clean up loading indicator references
@@ -1238,7 +1172,6 @@ class GalleryActivity : AppCompatActivity() {
     
     override fun onPause() {
         val currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "GalleryActivity onPause() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive")
         super.onPause()
         
         // Disable security monitoring during pause
@@ -1247,7 +1180,6 @@ class GalleryActivity : AppCompatActivity() {
     
     override fun onStop() {
         val currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "GalleryActivity onStop() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive, isMediaViewerActive=$isMediaViewerActive")
         super.onStop()
         
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
@@ -1255,11 +1187,9 @@ class GalleryActivity : AppCompatActivity() {
             
             // Only trigger security if not already triggered (e.g., by face-down detection)
             if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
-                android.util.Log.d("SecureGallery", "Triggering security due to app backgrounded")
                 TempPinHolder.triggerSecurity("App backgrounded (onStop)")
             }
         } else {
-            android.util.Log.d("SecureGallery", "Not triggering security - activity flags: picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating")
         }
     }
     
@@ -1280,7 +1210,6 @@ class GalleryActivity : AppCompatActivity() {
     
     override fun onResume() {
         val currentPin = TempPinHolder.pin ?: ""
-        android.util.Log.d("SecureGallery", "GalleryActivity onResume() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive")
         resumeTime = System.currentTimeMillis()
         super.onResume()
         
@@ -1292,7 +1221,6 @@ class GalleryActivity : AppCompatActivity() {
         if (isPhotoPickerActive || !isMediaViewerActive) {
             refreshGalleryData()
         } else {
-            android.util.Log.d("SecureGallery", "Skipping refresh - returning from media viewer")
         }
         
         // Reset flags
