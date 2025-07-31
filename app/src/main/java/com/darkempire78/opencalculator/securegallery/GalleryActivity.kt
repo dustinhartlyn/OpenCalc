@@ -1028,8 +1028,18 @@ class GalleryActivity : AppCompatActivity() {
             decryptedNotes.clear()
             for (note in gallery.notes) {
                 try {
-                    val titleBytes = CryptoUtils.decrypt(note.encryptedTitle, key)
-                    val bodyBytes = CryptoUtils.decrypt(note.encryptedBody, key)
+                    // Split encrypted data into IV and ciphertext for title
+                    val titleData = note.encryptedTitle
+                    val titleIv = titleData.sliceArray(0..15)
+                    val titleCiphertext = titleData.sliceArray(16 until titleData.size)
+                    val titleBytes = CryptoUtils.decrypt(titleIv, titleCiphertext, key)
+                    
+                    // Split encrypted data into IV and ciphertext for body
+                    val bodyData = note.encryptedBody
+                    val bodyIv = bodyData.sliceArray(0..15)
+                    val bodyCiphertext = bodyData.sliceArray(16 until bodyData.size)
+                    val bodyBytes = CryptoUtils.decrypt(bodyIv, bodyCiphertext, key)
+                    
                     val title = String(titleBytes, Charsets.UTF_8)
                     val body = String(bodyBytes, Charsets.UTF_8)
                     decryptedNotes.add(Pair(title, body))
