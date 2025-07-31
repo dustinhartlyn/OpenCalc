@@ -7,7 +7,7 @@ import java.io.Serializable
 
 class SecureNote(
     val id: UUID = UUID.randomUUID(),
-    val encryptedTitle: ByteArray,
-    val encryptedBody: ByteArray,
+    var encryptedTitle: ByteArray,
+    var encryptedBody: ByteArray,
     val date: Long
 ) : Serializable

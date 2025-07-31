@@ -9,7 +9,9 @@ import android.util.Log
 import android.view.GestureDetector
 import android.view.LayoutInflater
 import android.view.MotionEvent
+import android.view.View
 import android.view.ViewGroup
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
@@ -73,6 +75,7 @@ class GalleryActivity : AppCompatActivity() {
     private var isNoteDeleteMode = false
     private val selectedNotesForDeletion = mutableSetOf<Int>()
     private var notesAdapter: RecyclerView.Adapter<NoteViewHolder>? = null
+    private var decryptedNotes = mutableListOf<Pair<String, String>>()
     
     // Organize mode for drag-and-drop reordering
     private var isOrganizeMode = false
@@ -1771,11 +1774,14 @@ class GalleryActivity : AppCompatActivity() {
                 for (mediaItem in gallery.media) {
                     try {
                         // Decrypt with old key
-                        val decryptedData = CryptoUtils.decrypt(mediaItem.getEncryptedData(), currentKey)
+                        val encryptedData = mediaItem.getEncryptedData()
+                        val iv = encryptedData.sliceArray(0..15)
+                        val ciphertext = encryptedData.sliceArray(16 until encryptedData.size)
+                        val decryptedData = CryptoUtils.decrypt(iv, ciphertext, currentKey)
                         
                         // Re-encrypt with new key
-                        val (iv, ciphertext) = CryptoUtils.encrypt(decryptedData, newKey)
-                        mediaItem.setEncryptedData(iv + ciphertext)
+                        val (newIv, newCiphertext) = CryptoUtils.encrypt(decryptedData, newKey)
+                        mediaItem.setEncryptedData(newIv + newCiphertext)
                         
                         processedItems++
                         val progress = (processedItems * 100 / totalItems)
@@ -1791,15 +1797,22 @@ class GalleryActivity : AppCompatActivity() {
                 for (note in gallery.notes) {
                     try {
                         // Decrypt title and body with old key
-                        val decryptedTitle = CryptoUtils.decrypt(note.encryptedTitle, currentKey)
-                        val decryptedBody = CryptoUtils.decrypt(note.encryptedBody, currentKey)
+                        val titleData = note.encryptedTitle
+                        val titleIv = titleData.sliceArray(0..15)
+                        val titleCiphertext = titleData.sliceArray(16 until titleData.size)
+                        val decryptedTitle = CryptoUtils.decrypt(titleIv, titleCiphertext, currentKey)
+                        
+                        val bodyData = note.encryptedBody
+                        val bodyIv = bodyData.sliceArray(0..15)
+                        val bodyCiphertext = bodyData.sliceArray(16 until bodyData.size)
+                        val decryptedBody = CryptoUtils.decrypt(bodyIv, bodyCiphertext, currentKey)
                         
                         // Re-encrypt with new key
-                        val (ivTitle, ctTitle) = CryptoUtils.encrypt(decryptedTitle, newKey)
-                        val (ivBody, ctBody) = CryptoUtils.encrypt(decryptedBody, newKey)
+                        val (newTitleIv, newTitleCiphertext) = CryptoUtils.encrypt(decryptedTitle, newKey)
+                        val (newBodyIv, newBodyCiphertext) = CryptoUtils.encrypt(decryptedBody, newKey)
                         
-                        note.encryptedTitle = ivTitle + ctTitle
-                        note.encryptedBody = ivBody + ctBody
+                        note.encryptedTitle = newTitleIv + newTitleCiphertext
+                        note.encryptedBody = newBodyIv + newBodyCiphertext
                         
                         processedItems++
                         val progress = (processedItems * 100 / totalItems)
@@ -1822,10 +1835,10 @@ class GalleryActivity : AppCompatActivity() {
                 
                 runOnUiThread {
                     progressDialog.dismiss()
-                    Toast.makeText(this, "PIN changed successfully", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@GalleryActivity, "PIN changed successfully", Toast.LENGTH_SHORT).show()
                     
                     // Refresh the display with new PIN
-                    refreshGallery()
+                    refreshGalleryData()
                     refreshNotesDisplay()
                 }
                 
@@ -1833,7 +1846,7 @@ class GalleryActivity : AppCompatActivity() {
                 android.util.Log.e("SecureGallery", "Failed to change PIN", e)
                 runOnUiThread {
                     progressDialog.dismiss()
-                    Toast.makeText(this, "Failed to change PIN: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this@GalleryActivity, "Failed to change PIN: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -1894,10 +1907,6 @@ class GalleryActivity : AppCompatActivity() {
                 id != R.id.action_create_gallery && 
                 id != R.id.action_export_gallery &&
                 id != R.id.action_delete_gallery
-            }
-        } else {
-            allMenuItems
-        }
             }
         } else {
             allMenuItems

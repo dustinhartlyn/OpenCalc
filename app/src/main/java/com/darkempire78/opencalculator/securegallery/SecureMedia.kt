@@ -11,7 +11,7 @@ enum class MediaType {
 // Data model for encrypted media (photos and videos)
 class SecureMedia(
     val id: UUID = UUID.randomUUID(),
-    private val _encryptedData: ByteArray,
+    private var _encryptedData: ByteArray,
     val name: String,
     val date: Long,
     val mediaType: MediaType,
