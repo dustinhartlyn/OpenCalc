@@ -1009,6 +1009,7 @@ class GalleryActivity : AppCompatActivity() {
                 }
                 
                 GalleryManager.saveGalleries()
+                android.util.Log.d("SecureGallery", "Note saved, refreshing display - Gallery has ${gallery.notes.size} notes")
                 
                 // Refresh the notes display without recreating the activity
                 runOnUiThread {
@@ -1022,6 +1023,7 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun refreshNotesDisplay() {
+        android.util.Log.d("SecureGallery", "refreshNotesDisplay() called")
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
@@ -1029,6 +1031,7 @@ class GalleryActivity : AppCompatActivity() {
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
         
         if (key != null) {
+            android.util.Log.d("SecureGallery", "Decrypting ${gallery.notes.size} notes for display")
             // Decrypt and display notes
             decryptedNotes.clear()
             for (note in gallery.notes) {
@@ -1054,8 +1057,11 @@ class GalleryActivity : AppCompatActivity() {
                 }
             }
             
+            android.util.Log.d("SecureGallery", "Decrypted ${decryptedNotes.size} notes, notifying adapter")
             // Update the notes adapter
-            notesAdapter?.notifyDataSetChanged()
+            notesAdapter?.notifyDataSetChanged() ?: android.util.Log.w("SecureGallery", "Notes adapter is null!")
+        } else {
+            android.util.Log.w("SecureGallery", "Cannot refresh notes display - key is null")
         }
     }
 
