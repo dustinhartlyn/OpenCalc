@@ -366,11 +366,14 @@ class GalleryActivity : AppCompatActivity() {
                                 }
                             }
                             
-                            // Only add URIs that can actually be deleted (not photo picker temporary URIs)
+                            // Test if URI can actually be deleted before adding to deletable list
                             val scheme = uri.scheme
                             val authority = uri.authority
                             if (scheme == "content" && authority != "com.android.providers.media.photopicker" && !uri.toString().contains("picker_get_content")) {
-                                deletableUris.add(uri)
+                                // Perform a more thorough check to see if deletion is actually possible
+                                if (canDeleteUri(uri)) {
+                                    deletableUris.add(uri)
+                                }
                             }
                         }
                     processedCount++
@@ -2914,6 +2917,57 @@ class GalleryActivity : AppCompatActivity() {
         val stream = java.io.ByteArrayOutputStream()
         bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, stream)
         return stream.toByteArray()
+    }
+    
+    /**
+     * Check if a URI can actually be deleted before showing deletion dialog
+     * This prevents showing deletion options for content URIs that require special permissions
+     */
+    private fun canDeleteUri(uri: android.net.Uri): Boolean {
+        return try {
+            // First check basic URI properties
+            val scheme = uri.scheme
+            val authority = uri.authority
+            
+            // Skip certain authorities that are known to require special permissions
+            when (authority) {
+                "com.android.providers.media.documents" -> {
+                    android.util.Log.d("SecureGallery", "URI requires MANAGE_DOCUMENTS permission: $uri")
+                    return false
+                }
+                "com.android.providers.downloads.documents" -> {
+                    android.util.Log.d("SecureGallery", "Downloads provider URIs often cannot be deleted: $uri")
+                    return false
+                }
+            }
+            
+            // For content URIs, try to check if we can write to them
+            if (scheme == "content") {
+                // Check if we can get basic information about the URI
+                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    // If we can query it, try to check write permissions
+                    val writePermission = contentResolver.persistedUriPermissions.any { permission ->
+                        permission.uri == uri && permission.isWritePermission
+                    }
+                    
+                    if (!writePermission) {
+                        android.util.Log.d("SecureGallery", "No write permission for URI: $uri")
+                        return false
+                    }
+                }
+            }
+            
+            // If all checks pass, assume it can be deleted
+            android.util.Log.d("SecureGallery", "URI appears deletable: $uri")
+            true
+            
+        } catch (e: SecurityException) {
+            android.util.Log.d("SecureGallery", "SecurityException checking URI deletion capability: $uri - ${e.message}")
+            false
+        } catch (e: Exception) {
+            android.util.Log.d("SecureGallery", "Exception checking URI deletion capability: $uri - ${e.message}")
+            false
+        }
     }
 }
 
