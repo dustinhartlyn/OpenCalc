@@ -225,25 +225,41 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
         val pin = TempPinHolder.pin ?: ""
         val salt = gallery.salt
-        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        val key = if (pin.isNotEmpty()) CryptoUtils.deriveKey(pin, salt) else null
         
-        android.util.Log.d("SecureGallery", "handleSelectedMedia - galleryName: $galleryName, pin: '$pin', salt: ${salt != null}, key: ${key != null}")
+        android.util.Log.d("SecureGallery", "handleSelectedMedia - galleryName: $galleryName, pin: '$pin', salt: true, key: ${key != null}")
         
         if (key == null) {
-            android.util.Log.e("SecureGallery", "Cannot import media: key is null (pin='$pin', salt=${salt != null})")
+            android.util.Log.e("SecureGallery", "Cannot import media: key is null (pin='$pin', salt=true)")
             android.widget.Toast.makeText(this, "Error: Unable to encrypt media. Please try again.", android.widget.Toast.LENGTH_LONG).show()
             return
         }
         
         // Show loading dialog for media import
-        val loadingDialog = android.app.ProgressDialog(this).apply {
-            setTitle("Importing Media")
-            setMessage("Encrypting and processing media files...")
-            setCancelable(false)
-            setProgressStyle(android.app.ProgressDialog.STYLE_HORIZONTAL)
+        val progressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = uris.size
-            show()
+            progress = 0
         }
+        
+        val progressText = android.widget.TextView(this).apply {
+            text = "Encrypting and processing media files..."
+            setPadding(0, 0, 0, 16)
+        }
+        
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            addView(progressText)
+            addView(progressBar)
+        }
+        
+        val loadingDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Importing Media")
+            .setView(layout)
+            .setCancelable(false)
+            .create()
+        
+        loadingDialog.show()
         
         val encryptedMedia = mutableListOf<SecureMedia>()
         val deletableUris = mutableListOf<android.net.Uri>()
@@ -257,8 +273,8 @@ class GalleryActivity : AppCompatActivity() {
                 try {
                     // Update loading dialog on UI thread
                     runOnUiThread {
-                        loadingDialog.progress = processedCount
-                        loadingDialog.setMessage("Processing media ${processedCount + 1} of ${uris.size}...")
+                        progressBar.progress = processedCount
+                        progressText.text = "Processing media ${processedCount + 1} of ${uris.size}..."
                     }
                     
                     // Determine media type based on MIME type
@@ -473,8 +489,6 @@ class GalleryActivity : AppCompatActivity() {
                         val options = android.graphics.BitmapFactory.Options().apply {
                             inSampleSize = 16 // Scale down by factor of 16 for extremely small thumbnails
                             inPreferredConfig = android.graphics.Bitmap.Config.RGB_565 // Use less memory
-                            inPurgeable = true // Allow system to purge bitmap if needed
-                            inInputShareable = true
                             inTempStorage = ByteArray(16 * 1024) // Use smaller temp storage
                         }
                         android.graphics.BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
@@ -1385,11 +1399,19 @@ class GalleryActivity : AppCompatActivity() {
         android.util.Log.d("SecureGallery", "onCreate: PIN status - pin='$currentPin', isEmpty=${currentPin.isEmpty()}")
 
         // Keep screen on while gallery is active to prevent authentication timeout issues
-        window.addFlags(
-            android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-            android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-            android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
-        )
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        
+        // For API 27+, use the new methods instead of deprecated flags
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            )
+        }
 
         // Initialize GalleryManager context
         GalleryManager.setContext(this)
@@ -1885,9 +1907,23 @@ class GalleryActivity : AppCompatActivity() {
         }
         
         // Show progress dialog for re-encryption
-        val progressDialog = android.app.ProgressDialog(this)
-        progressDialog.setMessage("Re-encrypting gallery data with new PIN...")
-        progressDialog.setCancelable(false)
+        val progressText = android.widget.TextView(this).apply {
+            text = "Re-encrypting gallery data with new PIN..."
+            setPadding(0, 0, 0, 16)
+        }
+        
+        val layout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(50, 50, 50, 50)
+            addView(progressText)
+        }
+        
+        val progressDialog = android.app.AlertDialog.Builder(this)
+            .setTitle("Changing PIN")
+            .setView(layout)
+            .setCancelable(false)
+            .create()
+        
         progressDialog.show()
         
         Thread {
@@ -1917,7 +1953,7 @@ class GalleryActivity : AppCompatActivity() {
                         processedItems++
                         val progress = (processedItems * 100 / totalItems)
                         runOnUiThread {
-                            progressDialog.setMessage("Re-encrypting gallery data... ($progress%)")
+                            progressText.text = "Re-encrypting gallery data... ($progress%)"
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SecureGallery", "Failed to re-encrypt media item: ${mediaItem.name}", e)
@@ -1946,7 +1982,7 @@ class GalleryActivity : AppCompatActivity() {
                             processedItems++
                             val progress = (processedItems * 100 / totalItems)
                             runOnUiThread {
-                                progressDialog.setMessage("Re-encrypting thumbnails... ($progress%)")
+                                progressText.text = "Re-encrypting thumbnails... ($progress%)"
                             }
                         }
                     } catch (e: Exception) {
@@ -1978,7 +2014,7 @@ class GalleryActivity : AppCompatActivity() {
                         processedItems++
                         val progress = (processedItems * 100 / totalItems)
                         runOnUiThread {
-                            progressDialog.setMessage("Re-encrypting gallery data... ($progress%)")
+                            progressText.text = "Re-encrypting notes... ($progress%)"
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SecureGallery", "Failed to re-encrypt note", e)
