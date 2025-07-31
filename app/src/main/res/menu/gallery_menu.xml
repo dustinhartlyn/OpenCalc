@@ -18,6 +18,7 @@
     
     <item android:id="@+id/action_create_gallery" android:title="Create Gallery" android:showAsAction="never" />
     <item android:id="@+id/action_rename_gallery" android:title="Rename Gallery" android:showAsAction="never" />
+    <item android:id="@+id/action_change_pin" android:title="Change Pin" android:showAsAction="never" />
     <item android:id="@+id/action_delete_gallery" android:title="Delete Gallery" android:showAsAction="never" />
     
     <!-- Delete mode menu items -->

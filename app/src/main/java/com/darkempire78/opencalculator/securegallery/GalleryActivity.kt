@@ -1003,13 +1003,44 @@ class GalleryActivity : AppCompatActivity() {
                 }
                 
                 GalleryManager.saveGalleries()
-                safeRecreate() // Refresh the activity to show updated notes
+                
+                // Refresh the notes display without recreating the activity
+                refreshNotesDisplay()
+                android.widget.Toast.makeText(this, "Note saved", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 android.util.Log.e("SecureGallery", "Failed to encrypt note", e)
             }
         }
     }
     
+    private fun refreshNotesDisplay() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val pin = TempPinHolder.pin ?: ""
+        val salt = gallery.salt
+        val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
+        
+        if (key != null) {
+            // Decrypt and display notes
+            decryptedNotes.clear()
+            for (note in gallery.notes) {
+                try {
+                    val titleBytes = CryptoUtils.decrypt(note.encryptedTitle, key)
+                    val bodyBytes = CryptoUtils.decrypt(note.encryptedBody, key)
+                    val title = String(titleBytes, Charsets.UTF_8)
+                    val body = String(bodyBytes, Charsets.UTF_8)
+                    decryptedNotes.add(Pair(title, body))
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to decrypt note", e)
+                    decryptedNotes.add(Pair("Error", "Failed to decrypt note"))
+                }
+            }
+            
+            // Update the notes adapter
+            notesAdapter?.notifyDataSetChanged()
+        }
+    }
+
     private fun deleteSelectedNotes() {
         if (selectedNotesForDeletion.isEmpty()) return
         
@@ -1027,7 +1058,8 @@ class GalleryActivity : AppCompatActivity() {
         
         // Exit delete mode and refresh UI
         exitNoteDeleteMode()
-        safeRecreate()
+        refreshNotesDisplay()
+        android.widget.Toast.makeText(this, "Selected notes deleted", android.widget.Toast.LENGTH_SHORT).show()
     }
 
     override fun onDestroy() {
@@ -1338,6 +1370,14 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
         notesRecyclerView.adapter = notesAdapter
+
+        // Hide notes section for level 2 galleries
+        val notesSection = findViewById<LinearLayout>(R.id.notesSection)
+        if (isCurrentGalleryLevel2()) {
+            notesSection.visibility = android.view.View.GONE
+        } else {
+            notesSection.visibility = android.view.View.VISIBLE
+        }
 
         // Setup media RecyclerView with two-column grid
         val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
@@ -1653,6 +1693,152 @@ class GalleryActivity : AppCompatActivity() {
             .show()
     }
 
+    // Dialog for changing gallery PIN
+    private fun showChangePinDialog(galleryName: String) {
+        val currentPinInput = android.widget.EditText(this)
+        currentPinInput.hint = "Enter Current PIN"
+        currentPinInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        
+        val newPinInput = android.widget.EditText(this)
+        newPinInput.hint = "Enter New PIN"
+        newPinInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        
+        val confirmPinInput = android.widget.EditText(this)
+        confirmPinInput.hint = "Confirm New PIN"
+        confirmPinInput.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        
+        val layout = android.widget.LinearLayout(this)
+        layout.orientation = android.widget.LinearLayout.VERTICAL
+        layout.addView(currentPinInput)
+        layout.addView(newPinInput)
+        layout.addView(confirmPinInput)
+        
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Change PIN")
+            .setView(layout)
+            .setPositiveButton("Change") { _, _ ->
+                val currentPin = currentPinInput.text.toString()
+                val newPin = newPinInput.text.toString()
+                val confirmPin = confirmPinInput.text.toString()
+                
+                if (newPin != confirmPin) {
+                    Toast.makeText(this, "New PIN and confirmation don't match", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                
+                if (newPin.length < 4) {
+                    Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                
+                changePinForGallery(galleryName, currentPin, newPin)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+    
+    private fun changePinForGallery(galleryName: String, currentPin: String, newPin: String) {
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        if (gallery == null) {
+            Toast.makeText(this, "Gallery not found", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Verify current PIN
+        val currentPinHash = CryptoUtils.generatePinHash(currentPin, gallery.salt)
+        if (!currentPinHash.contentEquals(gallery.pinHash)) {
+            Toast.makeText(this, "Current PIN is incorrect", Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        // Show progress dialog for re-encryption
+        val progressDialog = android.app.ProgressDialog(this)
+        progressDialog.setMessage("Re-encrypting gallery data with new PIN...")
+        progressDialog.setCancelable(false)
+        progressDialog.show()
+        
+        Thread {
+            try {
+                // Derive keys
+                val currentKey = CryptoUtils.deriveKey(currentPin, gallery.salt)
+                val newKey = CryptoUtils.deriveKey(newPin, gallery.salt)
+                
+                // Re-encrypt all media
+                var totalItems = gallery.media.size + gallery.notes.size
+                var processedItems = 0
+                
+                // Re-encrypt media
+                for (mediaItem in gallery.media) {
+                    try {
+                        // Decrypt with old key
+                        val decryptedData = CryptoUtils.decrypt(mediaItem.getEncryptedData(), currentKey)
+                        
+                        // Re-encrypt with new key
+                        val (iv, ciphertext) = CryptoUtils.encrypt(decryptedData, newKey)
+                        mediaItem.setEncryptedData(iv + ciphertext)
+                        
+                        processedItems++
+                        val progress = (processedItems * 100 / totalItems)
+                        runOnUiThread {
+                            progressDialog.setMessage("Re-encrypting gallery data... ($progress%)")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SecureGallery", "Failed to re-encrypt media item: ${mediaItem.name}", e)
+                    }
+                }
+                
+                // Re-encrypt notes
+                for (note in gallery.notes) {
+                    try {
+                        // Decrypt title and body with old key
+                        val decryptedTitle = CryptoUtils.decrypt(note.encryptedTitle, currentKey)
+                        val decryptedBody = CryptoUtils.decrypt(note.encryptedBody, currentKey)
+                        
+                        // Re-encrypt with new key
+                        val (ivTitle, ctTitle) = CryptoUtils.encrypt(decryptedTitle, newKey)
+                        val (ivBody, ctBody) = CryptoUtils.encrypt(decryptedBody, newKey)
+                        
+                        note.encryptedTitle = ivTitle + ctTitle
+                        note.encryptedBody = ivBody + ctBody
+                        
+                        processedItems++
+                        val progress = (processedItems * 100 / totalItems)
+                        runOnUiThread {
+                            progressDialog.setMessage("Re-encrypting gallery data... ($progress%)")
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SecureGallery", "Failed to re-encrypt note", e)
+                    }
+                }
+                
+                // Update PIN hash
+                gallery.pinHash = CryptoUtils.generatePinHash(newPin, gallery.salt)
+                
+                // Save the gallery
+                GalleryManager.saveGalleries()
+                
+                // Update the temporary PIN holder
+                TempPinHolder.pin = newPin
+                
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    Toast.makeText(this, "PIN changed successfully", Toast.LENGTH_SHORT).show()
+                    
+                    // Refresh the display with new PIN
+                    refreshGallery()
+                    refreshNotesDisplay()
+                }
+                
+            } catch (e: Exception) {
+                android.util.Log.e("SecureGallery", "Failed to change PIN", e)
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    Toast.makeText(this, "Failed to change PIN: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
     // Dialog for deleting a gallery
     private fun showDeleteGalleryDialog(name: String) {
         android.app.AlertDialog.Builder(this)
@@ -1696,16 +1882,22 @@ class GalleryActivity : AppCompatActivity() {
             Pair("Sort Options", -1), // Special submenu item
             Pair("Create Gallery", R.id.action_create_gallery),
             Pair("Rename Gallery", R.id.action_rename_gallery),
+            Pair("Change Pin", R.id.action_change_pin),
             Pair("Delete Gallery", R.id.action_delete_gallery)
         )
         
         // Filter menu items based on security level
         val menuItems = if (isCurrentGalleryLevel2()) {
-            // For level 2 galleries, exclude create gallery and export options
+            // For level 2 galleries, exclude create gallery, export gallery, and delete gallery
+            // But keep export photos option
             allMenuItems.filter { (_, id) ->
                 id != R.id.action_create_gallery && 
-                id != R.id.action_export_photos && 
-                id != R.id.action_export_gallery
+                id != R.id.action_export_gallery &&
+                id != R.id.action_delete_gallery
+            }
+        } else {
+            allMenuItems
+        }
             }
         } else {
             allMenuItems
@@ -1728,6 +1920,7 @@ class GalleryActivity : AppCompatActivity() {
                     R.id.action_import_gallery -> importGalleryFromFile()
                     R.id.action_create_gallery -> showCreateGalleryDialog()
                     R.id.action_rename_gallery -> showRenameGalleryDialog(galleryName)
+                    R.id.action_change_pin -> showChangePinDialog(galleryName)
                     R.id.action_delete_gallery -> showDeleteGalleryDialog(galleryName)
                     -1 -> {
                         dialog.dismiss()
@@ -2214,12 +2407,6 @@ class GalleryActivity : AppCompatActivity() {
     private fun exportPhotosToMedia() {
         val galleryName = intent.getStringExtra("gallery_name") ?: return
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
-        
-        // Check security level restriction
-        if (gallery.securityLevel == 2) {
-            Toast.makeText(this, "Export not allowed for Level 2 galleries", Toast.LENGTH_SHORT).show()
-            return
-        }
         
         if (gallery.photos.isEmpty()) {
             Toast.makeText(this, "No photos to export", Toast.LENGTH_SHORT).show()

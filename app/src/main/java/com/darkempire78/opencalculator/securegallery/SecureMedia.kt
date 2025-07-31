@@ -46,6 +46,15 @@ class SecureMedia(
         }
     }
     
+    // Set the encrypted data (update memory or file)
+    fun setEncryptedData(data: ByteArray) {
+        if (filePath != null) {
+            java.io.File(filePath).writeBytes(data)
+        } else {
+            _encryptedData = data
+        }
+    }
+    
     // Get pre-generated encrypted thumbnail data
     fun getEncryptedThumbnail(): ByteArray? {
         return if (thumbnailPath != null && java.io.File(thumbnailPath).exists()) {
