@@ -1011,7 +1011,9 @@ class GalleryActivity : AppCompatActivity() {
                 GalleryManager.saveGalleries()
                 
                 // Refresh the notes display without recreating the activity
-                refreshNotesDisplay()
+                runOnUiThread {
+                    refreshNotesDisplay()
+                }
                 android.widget.Toast.makeText(this, "Note saved", android.widget.Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 android.util.Log.e("SecureGallery", "Failed to encrypt note", e)
@@ -1782,7 +1784,8 @@ class GalleryActivity : AppCompatActivity() {
                 val newKey = CryptoUtils.deriveKey(newPin, gallery.salt)
                 
                 // Re-encrypt all media
-                var totalItems = gallery.media.size + gallery.notes.size
+                val thumbnailCount = gallery.media.count { it.getEncryptedThumbnail() != null }
+                var totalItems = gallery.media.size + thumbnailCount + gallery.notes.size
                 var processedItems = 0
                 
                 // Re-encrypt media
@@ -1805,6 +1808,36 @@ class GalleryActivity : AppCompatActivity() {
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SecureGallery", "Failed to re-encrypt media item: ${mediaItem.name}", e)
+                    }
+                }
+                
+                // Re-encrypt thumbnails
+                for (mediaItem in gallery.media) {
+                    try {
+                        // Check if this media item has a thumbnail
+                        val thumbnailData = mediaItem.getEncryptedThumbnail()
+                        if (thumbnailData != null && thumbnailData.isNotEmpty()) {
+                            // Decrypt thumbnail with old key
+                            val thumbnailIv = thumbnailData.sliceArray(0..15)
+                            val thumbnailCiphertext = thumbnailData.sliceArray(16 until thumbnailData.size)
+                            val decryptedThumbnail = CryptoUtils.decrypt(thumbnailIv, thumbnailCiphertext, currentKey)
+                            
+                            // Re-encrypt thumbnail with new key
+                            val (newThumbnailIv, newThumbnailCiphertext) = CryptoUtils.encrypt(decryptedThumbnail, newKey)
+                            
+                            // Store re-encrypted thumbnail
+                            if (mediaItem.thumbnailPath != null) {
+                                java.io.File(mediaItem.thumbnailPath).writeBytes(newThumbnailIv + newThumbnailCiphertext)
+                            }
+                            
+                            processedItems++
+                            val progress = (processedItems * 100 / totalItems)
+                            runOnUiThread {
+                                progressDialog.setMessage("Re-encrypting thumbnails... ($progress%)")
+                            }
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.e("SecureGallery", "Failed to re-encrypt thumbnail for: ${mediaItem.name}", e)
                     }
                 }
                 
@@ -1851,6 +1884,9 @@ class GalleryActivity : AppCompatActivity() {
                 runOnUiThread {
                     progressDialog.dismiss()
                     Toast.makeText(this@GalleryActivity, "PIN changed successfully", Toast.LENGTH_SHORT).show()
+                    
+                    // Clear thumbnail cache to force reload with new key
+                    thumbnailCache.clear()
                     
                     // Refresh the display with new PIN
                     refreshGalleryData()
