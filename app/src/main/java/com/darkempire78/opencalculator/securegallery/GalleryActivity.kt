@@ -1931,7 +1931,11 @@ class GalleryActivity : AppCompatActivity() {
                 val newKey = CryptoUtils.deriveKey(newPin, gallery.salt)
                 
                 // Re-encrypt all media
-                val thumbnailCount = gallery.media.count { it.getEncryptedThumbnail() != null }
+                // Count existing thumbnails for progress calculation
+                val thumbnailCount = gallery.media.count { mediaItem ->
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this@GalleryActivity, galleryName, mediaItem.id.toString())
+                    java.io.File(thumbnailPath).exists()
+                }
                 var totalItems = gallery.media.size + thumbnailCount + gallery.notes.size
                 var processedItems = 0
                 
@@ -1958,23 +1962,32 @@ class GalleryActivity : AppCompatActivity() {
                     }
                 }
                 
-                // Re-encrypt thumbnails
+                // Re-encrypt thumbnails using ThumbnailGenerator paths
                 for (mediaItem in gallery.media) {
                     try {
-                        // Check if this media item has a thumbnail
-                        val thumbnailData = mediaItem.getEncryptedThumbnail()
-                        if (thumbnailData != null && thumbnailData.isNotEmpty()) {
-                            // Decrypt thumbnail with old key
-                            val thumbnailIv = thumbnailData.sliceArray(0..15)
-                            val thumbnailCiphertext = thumbnailData.sliceArray(16 until thumbnailData.size)
-                            val decryptedThumbnail = CryptoUtils.decrypt(thumbnailIv, thumbnailCiphertext, currentKey)
+                        // Get the expected thumbnail path using ThumbnailGenerator
+                        val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this@GalleryActivity, galleryName, mediaItem.id.toString())
+                        val thumbnailFile = java.io.File(thumbnailPath)
+                        
+                        if (thumbnailFile.exists()) {
+                            // Read the encrypted thumbnail data
+                            val thumbnailData = thumbnailFile.readBytes()
                             
-                            // Re-encrypt thumbnail with new key
-                            val (newThumbnailIv, newThumbnailCiphertext) = CryptoUtils.encrypt(decryptedThumbnail, newKey)
-                            
-                            // Store re-encrypted thumbnail
-                            if (mediaItem.thumbnailPath != null) {
-                                java.io.File(mediaItem.thumbnailPath).writeBytes(newThumbnailIv + newThumbnailCiphertext)
+                            if (thumbnailData.size >= 16) {
+                                // Decrypt thumbnail with old key
+                                val thumbnailIv = thumbnailData.sliceArray(0..15)
+                                val thumbnailCiphertext = thumbnailData.sliceArray(16 until thumbnailData.size)
+                                val decryptedThumbnail = CryptoUtils.decrypt(thumbnailIv, thumbnailCiphertext, currentKey)
+                                
+                                // Re-encrypt thumbnail with new key
+                                val (newThumbnailIv, newThumbnailCiphertext) = CryptoUtils.encrypt(decryptedThumbnail, newKey)
+                                
+                                // Save re-encrypted thumbnail back to file
+                                thumbnailFile.writeBytes(newThumbnailIv + newThumbnailCiphertext)
+                                
+                                android.util.Log.d("SecureGallery", "Successfully re-encrypted thumbnail for: ${mediaItem.name}")
+                            } else {
+                                android.util.Log.w("SecureGallery", "Thumbnail data too small for: ${mediaItem.name}")
                             }
                             
                             processedItems++
@@ -1982,6 +1995,8 @@ class GalleryActivity : AppCompatActivity() {
                             runOnUiThread {
                                 progressText.text = "Re-encrypting thumbnails... ($progress%)"
                             }
+                        } else {
+                            android.util.Log.d("SecureGallery", "No thumbnail found for: ${mediaItem.name} at $thumbnailPath")
                         }
                     } catch (e: Exception) {
                         android.util.Log.e("SecureGallery", "Failed to re-encrypt thumbnail for: ${mediaItem.name}", e)
