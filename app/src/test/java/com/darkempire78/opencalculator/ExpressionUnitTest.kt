@@ -92,8 +92,8 @@ class ExpressionUnitTest {
         val decimalNumber2 = calculate("100.0!", false).toDouble()
         assertEquals(number2,decimalNumber2,0.0)
 
-        val number3 = calculate("3004!", false).toDouble()
-        val decimalNumber3 = calculate("3004.0!", false).toDouble()
+        val number3 = calculate("150!", false).toDouble()
+        val decimalNumber3 = calculate("150.0!", false).toDouble()
         assertEquals(number3,decimalNumber3,0.0)
     }
 

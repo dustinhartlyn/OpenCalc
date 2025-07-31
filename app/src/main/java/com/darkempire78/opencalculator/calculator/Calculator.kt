@@ -32,7 +32,9 @@ class Calculator(
     ) {
 
     fun factorial(number: BigDecimal): BigDecimal {
-        if (number >= BigDecimal(3000)) {
+        // Limit factorial to prevent memory overflow and ANR crashes
+        // Even 170! is at the edge of Double.MAX_VALUE, so 200 is a safe upper bound
+        if (number >= BigDecimal(200)) {
             is_infinity = true
             return BigDecimal.ZERO
         }
