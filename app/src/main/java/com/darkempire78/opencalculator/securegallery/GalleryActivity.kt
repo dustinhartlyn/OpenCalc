@@ -907,6 +907,9 @@ class GalleryActivity : AppCompatActivity() {
                                 try {
                                     contentResolver.delete(uri, null, null)
                                     deletedCount++
+                                } catch (e: SecurityException) {
+                                    android.util.Log.e("SecureGallery", "Permission denied deleting file: $uri - ${e.message}")
+                                    failedCount++
                                 } catch (e: Exception) {
                                     android.util.Log.e("SecureGallery", "Failed to delete original file: $uri", e)
                                     failedCount++
@@ -2114,12 +2117,13 @@ class GalleryActivity : AppCompatActivity() {
         
         // Filter menu items based on security level
         val menuItems = if (isCurrentGalleryLevel2()) {
-            // For level 2 galleries, exclude create gallery, export gallery, and delete gallery
+            // For level 2 galleries, exclude create gallery, export gallery, delete gallery, and rename gallery
             // But keep export photos option
             allMenuItems.filter { (_, id) ->
                 id != R.id.action_create_gallery && 
                 id != R.id.action_export_gallery &&
-                id != R.id.action_delete_gallery
+                id != R.id.action_delete_gallery &&
+                id != R.id.action_rename_gallery
             }
         } else {
             allMenuItems
