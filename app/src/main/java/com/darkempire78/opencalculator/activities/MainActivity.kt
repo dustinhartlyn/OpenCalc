@@ -159,12 +159,21 @@ class MainActivity : AppCompatActivity() {
         }
 
         // Enable the possibility to show the activity on the lock screen
-        // Removed FLAG_TURN_SCREEN_ON to prevent conflicts with gallery screen management
-        window.addFlags(
-            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
-        )
+        // Using modern API instead of deprecated flags
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(false) // Explicitly set to false since we removed FLAG_TURN_SCREEN_ON
+        } else {
+            // Fallback for older devices
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+            )
+        }
+        
+        // Keep screen on
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Themes
         val themes = Themes(this)
