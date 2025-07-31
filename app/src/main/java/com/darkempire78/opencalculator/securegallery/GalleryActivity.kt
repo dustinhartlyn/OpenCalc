@@ -109,6 +109,8 @@ class GalleryActivity : AppCompatActivity() {
 
     // Activity result launcher for adding multiple pictures and videos
     private val addMediaLauncher = registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "addMediaLauncher callback - PIN='$currentPin', isEmpty=${currentPin.isEmpty()}, uris.size=${uris.size}")
         isPhotoPickerActive = false // Reset the flag when picker returns
         if (uris.isNotEmpty()) {
             handleSelectedMedia(uris)
@@ -162,11 +164,59 @@ class GalleryActivity : AppCompatActivity() {
 
     // Handler for Add Media menu item (photos and videos)
     private fun addMediaToGallery() {
-        val currentPin = TempPinHolder.pin ?: ""
+        val galleryName = intent.getStringExtra("gallery_name") ?: ""
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        
+        if (gallery == null) {
+            android.util.Log.e("SecureGallery", "Gallery not found: $galleryName")
+            android.widget.Toast.makeText(this, "Error: Gallery not found", android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        
+        var currentPin = TempPinHolder.pin ?: ""
         android.util.Log.d("SecureGallery", "addMediaToGallery: PIN status before launching picker - pin='$currentPin', isEmpty=${currentPin.isEmpty()}")
         
-        isPhotoPickerActive = true
-        addMediaLauncher.launch("*/*") // Accept both images and videos
+        // If PIN is empty, this means the activity was recreated and PIN was lost
+        // We need to prompt the user to re-enter the PIN
+        if (currentPin.isEmpty()) {
+            android.util.Log.d("SecureGallery", "PIN is empty - prompting user for re-authentication")
+            
+            // Show PIN dialog for re-authentication
+            val builder = android.app.AlertDialog.Builder(this)
+            builder.setTitle("Re-enter PIN")
+            builder.setMessage("Please re-enter your PIN to add media to this gallery.")
+            
+            val input = android.widget.EditText(this)
+            input.inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            builder.setView(input)
+            
+            builder.setPositiveButton("OK") { _, _ ->
+                val enteredPin = input.text.toString()
+                if (enteredPin == gallery.pin) {
+                    // Correct PIN - store it and proceed
+                    TempPinHolder.pin = enteredPin
+                    android.util.Log.d("SecureGallery", "PIN re-authenticated successfully - launching photo picker")
+                    
+                    // Now launch the photo picker
+                    isPhotoPickerActive = true
+                    addMediaLauncher.launch("*/*")
+                } else {
+                    android.util.Log.d("SecureGallery", "PIN re-authentication failed")
+                    android.widget.Toast.makeText(this, "Incorrect PIN", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            
+            builder.setNegativeButton("Cancel") { dialog, _ ->
+                dialog.cancel()
+            }
+            
+            builder.show()
+        } else {
+            // PIN is available, proceed directly
+            android.util.Log.d("SecureGallery", "PIN available - launching photo picker directly")
+            isPhotoPickerActive = true
+            addMediaLauncher.launch("*/*") // Accept both images and videos
+        }
     }
 
     private fun handleSelectedMedia(uris: List<android.net.Uri>) {
@@ -1113,7 +1163,8 @@ class GalleryActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
-        android.util.Log.d("SecureGallery", "GalleryActivity onDestroy() called")
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "GalleryActivity onDestroy() called - PIN='$currentPin', isFinishing=$isFinishing, isPhotoPickerActive=$isPhotoPickerActive")
         deleteDialog?.dismiss()
         deleteDialog = null
         
@@ -1148,8 +1199,14 @@ class GalleryActivity : AppCompatActivity() {
         decryptedMedia.clear()
         
         cleanupSecurity()
-        // Clear PIN from memory when gallery is destroyed
-        TempPinHolder.clear()
+        
+        // Only clear PIN when activity is actually finishing, not when temporarily destroyed
+        if (isFinishing) {
+            android.util.Log.d("SecureGallery", "Activity finishing - clearing PIN")
+            TempPinHolder.clear()
+        } else {
+            android.util.Log.d("SecureGallery", "Activity destroyed but not finishing - keeping PIN for recreation")
+        }
         
         // Clean up loading indicator references
         galleryLoadingIndicator = null
@@ -1159,6 +1216,8 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onPause() {
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "GalleryActivity onPause() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive")
         super.onPause()
         
         // Disable security monitoring during pause
@@ -1166,6 +1225,8 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onStop() {
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "GalleryActivity onStop() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive, isMediaViewerActive=$isMediaViewerActive")
         super.onStop()
         
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
@@ -1173,8 +1234,11 @@ class GalleryActivity : AppCompatActivity() {
             
             // Only trigger security if not already triggered (e.g., by face-down detection)
             if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
+                android.util.Log.d("SecureGallery", "Triggering security due to app backgrounded")
                 TempPinHolder.triggerSecurity("App backgrounded (onStop)")
             }
+        } else {
+            android.util.Log.d("SecureGallery", "Not triggering security - activity flags: picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating")
         }
     }
     
@@ -1194,6 +1258,8 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     override fun onResume() {
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "GalleryActivity onResume() called - PIN='$currentPin', isPhotoPickerActive=$isPhotoPickerActive")
         resumeTime = System.currentTimeMillis()
         super.onResume()
         
@@ -1289,9 +1355,12 @@ class GalleryActivity : AppCompatActivity() {
     }
     
     private fun closeGalleryForSecurity() {
+        val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "closeGalleryForSecurity() called - PIN='$currentPin', securityTriggered=${TempPinHolder.securityTriggered}")
         if (!TempPinHolder.securityTriggered) {
             TempPinHolder.triggerSecurity("Gallery security closure")
             // Clear PIN from memory for security - user must re-enter PIN to access gallery again
+            android.util.Log.d("SecureGallery", "Security triggered - clearing PIN and finishing activity")
             TempPinHolder.clear()
             finish() // Close gallery and return to calculator
         }
