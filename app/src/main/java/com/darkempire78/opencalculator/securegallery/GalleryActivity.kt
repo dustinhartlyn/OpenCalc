@@ -118,15 +118,24 @@ class GalleryActivity : AppCompatActivity() {
     // Activity result launcher for note editor
     private val noteEditorLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         isNoteEditorActive = false // Reset the flag when note editor returns
+        android.util.Log.d("SecureGallery", "Note editor returned with result code: ${result.resultCode}")
+        
         if (result.resultCode == RESULT_OK) {
             val title = result.data?.getStringExtra("note_title") ?: ""
             val body = result.data?.getStringExtra("note_body") ?: ""
             val noteIndex = result.data?.getIntExtra("note_index", -1) ?: -1
             val isNewNote = result.data?.getBooleanExtra("is_new_note", true) ?: true
             
+            android.util.Log.d("SecureGallery", "Note editor data - title: '$title', body: '$body', noteIndex: $noteIndex, isNewNote: $isNewNote")
+            
             if (title.isNotEmpty() || body.isNotEmpty()) {
+                android.util.Log.d("SecureGallery", "Note has content, calling handleNoteSave")
                 handleNoteSave(title, body, noteIndex, isNewNote)
+            } else {
+                android.util.Log.d("SecureGallery", "Note is empty, not saving")
             }
+        } else {
+            android.util.Log.d("SecureGallery", "Note editor was canceled or returned with error code")
         }
     }
     
@@ -1344,7 +1353,9 @@ class GalleryActivity : AppCompatActivity() {
         val salt = GalleryManager.getGalleries().find { it.name == galleryName }?.salt
         val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
 
-        val decryptedNotes = notes.map { note ->
+        // Clear and populate the class-level decryptedNotes variable
+        decryptedNotes.clear()
+        for (note in notes) {
             var title = "(Encrypted)"
             var body = "(Encrypted)"
             if (key != null) {
@@ -1360,7 +1371,7 @@ class GalleryActivity : AppCompatActivity() {
                     body = "(Decryption failed)"
                 }
             }
-            Pair(title, body)
+            decryptedNotes.add(Pair(title, body))
         }
 
         val notesRecyclerView = findViewById<RecyclerView>(R.id.notesRecyclerView)

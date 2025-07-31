@@ -52,7 +52,10 @@ class NoteEditorActivity : AppCompatActivity() {
         val title = noteTitleEdit.text.toString().trim()
         val body = noteBodyEdit.text.toString().trim()
         
+        android.util.Log.d("SecureGallery", "NoteEditorActivity saveNote() called - title: '$title', body: '$body'")
+        
         if (title.isEmpty() && body.isEmpty()) {
+            android.util.Log.d("SecureGallery", "Note is empty, showing toast and returning")
             Toast.makeText(this, "Please enter a title or content", Toast.LENGTH_SHORT).show()
             return
         }
@@ -64,6 +67,7 @@ class NoteEditorActivity : AppCompatActivity() {
             putExtra("is_new_note", isNewNote)
         }
         
+        android.util.Log.d("SecureGallery", "Setting result OK and finishing activity")
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
     }
