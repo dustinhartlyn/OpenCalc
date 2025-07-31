@@ -192,7 +192,7 @@ class GalleryActivity : AppCompatActivity() {
             
             builder.setPositiveButton("OK") { _, _ ->
                 val enteredPin = input.text.toString()
-                if (enteredPin == gallery.pin) {
+                if (gallery.pinHash != null && CryptoUtils.verifyPin(enteredPin, gallery.salt, gallery.pinHash!!)) {
                     // Correct PIN - store it and proceed
                     TempPinHolder.pin = enteredPin
                     android.util.Log.d("SecureGallery", "PIN re-authenticated successfully - launching photo picker")
