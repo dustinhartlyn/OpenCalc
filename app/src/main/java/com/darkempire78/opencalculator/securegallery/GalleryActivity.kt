@@ -618,15 +618,31 @@ class GalleryActivity : AppCompatActivity() {
             android.util.Log.d("SecureGallery", "Adding new media starting at index $startIndex")
             
             // First extend the decryptedMedia list to accommodate new items
+            // BUT ensure we don't exceed the actual media count in the gallery
+            val galleryName = intent.getStringExtra("gallery_name") ?: return@Thread
+            val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return@Thread
+            val maxSize = gallery.media.size
+            
             runOnUiThread {
-                repeat(media.size) { decryptedMedia.add(null) }
-                photosAdapter?.notifyDataSetChanged()
-                android.util.Log.d("SecureGallery", "Extended decryptedMedia to size ${decryptedMedia.size}")
+                // Only add the exact number of new items needed, don't exceed actual media count
+                val itemsToAdd = minOf(media.size, maxSize - decryptedMedia.size)
+                if (itemsToAdd > 0) {
+                    repeat(itemsToAdd) { decryptedMedia.add(null) }
+                    photosAdapter?.notifyDataSetChanged()
+                    android.util.Log.d("SecureGallery", "Extended decryptedMedia to size ${decryptedMedia.size} (max: $maxSize)")
+                } else {
+                    android.util.Log.d("SecureGallery", "No extension needed - decryptedMedia: ${decryptedMedia.size}, maxSize: $maxSize")
+                }
             }
             
             // Load thumbnails for new media
             media.forEachIndexed { localIndex, mediaItem ->
                 val globalIndex = startIndex + localIndex
+                if (globalIndex >= maxSize) {
+                    android.util.Log.w("SecureGallery", "Skipping thumbnail at position $globalIndex - exceeds max size $maxSize")
+                    return@forEachIndexed
+                }
+                
                 android.util.Log.d("SecureGallery", "Loading new thumbnail at position $globalIndex: ${mediaItem.name}")
                 
                 val thumbnail = loadThumbnailOptimized(mediaItem, key, globalIndex)
@@ -1135,6 +1151,7 @@ class GalleryActivity : AppCompatActivity() {
             if (hasNewMedia && actualMediaCount > decryptedMedia.size) {
                 android.util.Log.d("SecureGallery", "Expanding thumbnail list from ${decryptedMedia.size} to $actualMediaCount")
                 // Expand the list to accommodate new media (don't clear existing)
+                // Ensure we don't exceed the actual media count
                 while (decryptedMedia.size < actualMediaCount) {
                     decryptedMedia.add(null)
                 }
@@ -1146,6 +1163,19 @@ class GalleryActivity : AppCompatActivity() {
                     loadThumbnailsAsync(newMedia, key)
                 }
             } else if (hasMissingThumbnails) {
+                // Ensure decryptedMedia list matches actual media count before loading missing thumbnails
+                if (decryptedMedia.size != actualMediaCount) {
+                    android.util.Log.d("SecureGallery", "Resizing decryptedMedia from ${decryptedMedia.size} to $actualMediaCount")
+                    // Resize the list to match actual media count
+                    while (decryptedMedia.size < actualMediaCount) {
+                        decryptedMedia.add(null)
+                    }
+                    while (decryptedMedia.size > actualMediaCount) {
+                        decryptedMedia.removeAt(decryptedMedia.size - 1)
+                    }
+                    photosAdapter?.notifyDataSetChanged()
+                }
+                
                 // Load missing thumbnails within existing range
                 if (key != null && gallery.media.isNotEmpty()) {
                     loadMissingThumbnailsInRange(gallery.media, key)
@@ -1358,7 +1388,15 @@ class GalleryActivity : AppCompatActivity() {
                 return MediaThumbnailViewHolder(v)
             }
             override fun getItemCount(): Int {
-                val count = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
+                val baseCount = if (isOrganizeMode) organizeMedia.size else decryptedMedia.size
+                
+                // Safety check: ensure count doesn't exceed actual media in gallery
+                val galleryName = intent.getStringExtra("gallery_name")
+                val gallery = if (galleryName != null) GalleryManager.getGalleries().find { it.name == galleryName } else null
+                val actualMediaCount = gallery?.media?.size ?: 0
+                
+                val count = if (actualMediaCount > 0) minOf(baseCount, actualMediaCount) else baseCount
+                
                 android.util.Log.d("SecureGallery", "getItemCount() called: returning $count (organize: $isOrganizeMode, decryptedMedia: ${decryptedMedia.size}, organizeMedia: ${organizeMedia.size})")
                 
                 // Additional debugging for the first 20 calls
