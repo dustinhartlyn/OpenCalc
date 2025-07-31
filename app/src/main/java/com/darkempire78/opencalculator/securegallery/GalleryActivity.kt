@@ -2640,7 +2640,7 @@ class GalleryActivity : AppCompatActivity() {
             for ((index, media) in gallery.media.withIndex()) {
                 try {
                     // Decrypt media
-                    val encryptedData = media.encryptedData
+                    val encryptedData = media.getEncryptedData()
                     val iv = encryptedData.copyOfRange(0, 16)
                     val ct = encryptedData.copyOfRange(16, encryptedData.size)
                     val decryptedBytes = try {
@@ -2674,7 +2674,7 @@ class GalleryActivity : AppCompatActivity() {
                         failedCount++
                     }
                 } catch (e: Exception) {
-                    android.util.Log.e("SecureGallery", "Failed to export photo: ${photo.name}", e)
+                    android.util.Log.e("SecureGallery", "Failed to export media: ${media.name}", e)
                     failedCount++
                 }
             }
@@ -2713,12 +2713,23 @@ class GalleryActivity : AppCompatActivity() {
                 // Collect cached thumbnails for export
                 val cachedThumbnails = VideoUtils.collectCachedThumbnails(this, media)
                 
+                // Convert media to photos for legacy compatibility
+                val photosForExport = gallery.media.filter { it.isPhoto() }.map { media ->
+                    SecurePhoto(
+                        id = media.id,
+                        encryptedData = media.getEncryptedData(),
+                        name = media.name,
+                        date = media.date,
+                        customOrder = media.customOrder
+                    )
+                }
+                
                 // Create a serializable export format
                 val exportData = GalleryExportData(
                     name = gallery.name,
                     salt = gallery.salt,
                     pinHash = gallery.pinHash,
-                    photos = gallery.media, // Legacy compatibility
+                    photos = photosForExport, // Legacy compatibility
                     media = media, // Include all media items
                     videoThumbnails = cachedThumbnails, // Include cached thumbnails
                     notes = gallery.notes,
@@ -2833,7 +2844,18 @@ class GalleryActivity : AppCompatActivity() {
             )
             
             // Add photos and notes (legacy support)  
-            newGallery.media.addAll(importData.photos)
+            // Convert legacy photos to media format
+            for (photo in importData.photos) {
+                val mediaItem = SecureMedia(
+                    id = photo.id,
+                    _encryptedData = photo.encryptedData,
+                    name = photo.name,
+                    date = photo.date,
+                    mediaType = MediaType.PHOTO,
+                    customOrder = photo.customOrder
+                )
+                newGallery.media.add(mediaItem)
+            }
             newGallery.notes.addAll(importData.notes)
             
             // Add media items if available (version 2+)
