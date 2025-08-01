@@ -266,8 +266,8 @@ class SecureMediaViewerActivity : AppCompatActivity() {
     
     override fun onResume() {
         super.onResume()
-        // Resume current video when activity gains focus
-        adapter.resumeCurrentVideo()
+        // Videos will automatically resume when they come into view
+        // No explicit resume needed with the current implementation
     }
     
     override fun onDestroy() {
