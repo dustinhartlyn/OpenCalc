@@ -747,7 +747,7 @@ class GalleryActivity : AppCompatActivity() {
             val galleryName = intent.getStringExtra("gallery_name") ?: ""
             var previousThumbnailCount = 0
             var stableCount = 0
-            val maxStableChecks = 20 // Wait for 10 seconds without changes before considering complete
+            val maxStableChecks = 40 // Wait for 20 seconds without changes before considering complete
             
             while (!thumbnailGenerationComplete) {
                 try {
@@ -768,8 +768,7 @@ class GalleryActivity : AppCompatActivity() {
                         stableCount = 0
                         
                         runOnUiThread {
-                            val totalProgress = media.size + currentThumbnailCount
-                            galleryLoadingIndicator?.progress = totalProgress
+                            galleryLoadingIndicator?.progress = currentThumbnailCount
                             galleryLoadingText?.text = "Generating thumbnails ($currentThumbnailCount/${media.size})..."
                             Log.d(TAG, "Updated thumbnail generation progress: $currentThumbnailCount/${media.size}")
                         }
@@ -818,6 +817,7 @@ class GalleryActivity : AppCompatActivity() {
                 if (loadingContainer != null && galleryLoadingIndicator != null) {
                     loadingContainer.visibility = View.VISIBLE
                     galleryLoadingIndicator?.max = mediaCount
+                    galleryLoadingIndicator?.progress = 0
                     galleryLoadingIndicator?.progress = 0
                     galleryLoadingText?.text = "Generating thumbnails..."
                     
@@ -1415,6 +1415,10 @@ class GalleryActivity : AppCompatActivity() {
         
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
+        
+        // Clear thumbnail caches to prevent corruption after app minimize
+        Log.d("SecureGallery", "Clearing thumbnail caches on resume to prevent corruption")
+        ThumbnailGenerator.clearCache(this)
         
         // Only refresh if we're returning from photo picker or if media viewer was NOT active
         // This prevents duplicate thumbnails when returning from photo viewer

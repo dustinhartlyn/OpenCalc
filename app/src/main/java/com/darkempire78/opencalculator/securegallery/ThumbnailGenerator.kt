@@ -192,6 +192,28 @@ object ThumbnailGenerator {
     }
     
     /**
+     * Clears thumbnail cache to prevent corruption after app lifecycle events
+     */
+    fun clearCache(context: Context) {
+        try {
+            val thumbnailsCacheDir = File(context.cacheDir, "thumbnails")
+            if (thumbnailsCacheDir.exists()) {
+                thumbnailsCacheDir.listFiles()?.forEach { file ->
+                    try {
+                        file.delete()
+                        android.util.Log.v("ThumbnailGenerator", "Cleared cached thumbnail: ${file.name}")
+                    } catch (e: Exception) {
+                        android.util.Log.w("ThumbnailGenerator", "Failed to clear cached thumbnail: ${file.name}", e)
+                    }
+                }
+            }
+            android.util.Log.d("ThumbnailGenerator", "Thumbnail cache cleared successfully")
+        } catch (e: Exception) {
+            android.util.Log.e("ThumbnailGenerator", "Failed to clear thumbnail cache", e)
+        }
+    }
+    
+    /**
      * Cleans up orphaned thumbnail files for a gallery
      */
     fun cleanupThumbnails(context: Context, galleryName: String, validMediaIds: Set<String>) {

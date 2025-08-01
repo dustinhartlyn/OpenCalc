@@ -557,6 +557,189 @@ class SecureVideoManager(private val context: Context) {
     }
     
     /**
+     * Quick prepare video for MediaPlayer with optimized streaming
+     * Only decrypts the header and initial segments for faster startup
+     */
+    suspend fun prepareVideoQuickly(
+        encryptedFile: File,
+        encryptionKey: String,
+        videoId: String = encryptedFile.nameWithoutExtension
+    ): File? {
+        
+        return try {
+            Log.d(TAG, "Starting quick video preparation for: ${encryptedFile.name}")
+            
+            // Check if we already have this video prepared
+            tempVideoFiles[videoId]?.let { existingFile ->
+                if (existingFile.exists() && existingFile.length() > 0) {
+                    Log.d(TAG, "Reusing existing prepared video: ${existingFile.name}")
+                    return existingFile
+                } else {
+                    tempVideoFiles.remove(videoId)
+                }
+            }
+            
+            // Check memory before creating new temp file
+            if (MemoryManager.isLowMemory()) {
+                MemoryManager.forceMemoryCleanup()
+                delay(200)
+            }
+            
+            val tempFile = createTempVideoFile(videoId)
+            
+            // Stream optimized amount for quick startup
+            val streamedSize = streamVideoForQuickPlayback(encryptedFile, tempFile, encryptionKey)
+            
+            if (streamedSize > 0L) {
+                tempVideoFiles[videoId] = tempFile
+                Log.d(TAG, "Quick video preparation complete: ${streamedSize / 1024}KB streamed for ${encryptedFile.name}")
+                
+                // Continue streaming the rest in background
+                continueVideoStreamingInBackground(encryptedFile, tempFile, encryptionKey, streamedSize)
+                
+                tempFile
+            } else {
+                Log.w(TAG, "Quick video preparation failed, falling back to full decryption")
+                // Fallback to full decryption
+                tempFile.delete()
+                decryptVideoToTempFile(encryptedFile, encryptionKey)
+            }
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in quick video preparation", e)
+            // Fallback to full decryption
+            decryptVideoToTempFile(encryptedFile, encryptionKey)
+        }
+    }
+    
+    /**
+     * Stream initial video segments for quick playback startup (~1-2 seconds of video)
+     */
+    private suspend fun streamVideoForQuickPlayback(
+        encryptedFile: File,
+        outputFile: File,
+        encryptionKey: String
+    ): Long {
+        
+        return try {
+            // Stream enough data for smooth playback startup
+            // This includes: file header + first 10-15 seconds of video
+            val targetStreamSize = calculateQuickPlaybackStreamSize(encryptedFile)
+            
+            Log.d(TAG, "Streaming first ${targetStreamSize / 1024}KB for quick playback")
+            
+            var totalBytesWritten = 0L
+            val buffer = ByteArray(128 * 1024) // 128KB buffer for faster streaming
+            
+            FileInputStream(encryptedFile).use { inputStream ->
+                FileOutputStream(outputFile).use { outputStream ->
+                    
+                    var totalBytesRead = 0L
+                    
+                    while (totalBytesRead < targetStreamSize) {
+                        val bytesRead = inputStream.read(buffer)
+                        if (bytesRead == -1) break
+                        
+                        val bytesToProcess = minOf(bytesRead, (targetStreamSize - totalBytesRead).toInt())
+                        val encryptedChunk = buffer.copyOf(bytesToProcess)
+                        val decryptedChunk = decryptDataWithKey(encryptedChunk, encryptionKey)
+                        
+                        outputStream.write(decryptedChunk, 0, decryptedChunk.size)
+                        
+                        totalBytesRead += bytesToProcess.toLong()
+                        totalBytesWritten += decryptedChunk.size.toLong()
+                        
+                        // Yield periodically for responsiveness
+                        if (totalBytesRead % (256 * 1024) == 0L) {
+                            yield()
+                        }
+                    }
+                }
+            }
+            
+            Log.d(TAG, "Quick stream complete: ${totalBytesWritten / 1024}KB written")
+            totalBytesWritten
+            
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in quick video streaming", e)
+            0L
+        }
+    }
+    
+    /**
+     * Continue streaming the rest of the video in background while user starts watching
+     */
+    private fun continueVideoStreamingInBackground(
+        encryptedFile: File,
+        outputFile: File,
+        encryptionKey: String,
+        alreadyStreamed: Long
+    ) {
+        cleanupScope.launch {
+            try {
+                Log.d(TAG, "Starting background streaming from offset ${alreadyStreamed / 1024}KB")
+                
+                val buffer = ByteArray(256 * 1024) // 256KB buffer for background streaming
+                
+                FileInputStream(encryptedFile).use { inputStream ->
+                    FileOutputStream(outputFile, true).use { outputStream -> // Append mode
+                        
+                        // Skip to where we left off
+                        inputStream.skip(alreadyStreamed)
+                        
+                        var backgroundBytesWritten = 0L
+                        
+                        while (true) {
+                            val bytesRead = inputStream.read(buffer)
+                            if (bytesRead == -1) break
+                            
+                            val decryptedChunk = decryptDataWithKey(buffer.copyOf(bytesRead), encryptionKey)
+                            outputStream.write(decryptedChunk, 0, decryptedChunk.size)
+                            
+                            backgroundBytesWritten += decryptedChunk.size.toLong()
+                            
+                            // Yield frequently to not block other operations
+                            if (backgroundBytesWritten % (512 * 1024) == 0L) {
+                                delay(10) // Small delay to be nice to other operations
+                            }
+                        }
+                        
+                        Log.d(TAG, "Background streaming complete: ${backgroundBytesWritten / 1024}KB additional")
+                    }
+                }
+                
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in background video streaming", e)
+            }
+        }
+    }
+    
+    /**
+     * Calculate optimal stream size for quick playback
+     */
+    private fun calculateQuickPlaybackStreamSize(encryptedFile: File): Long {
+        val fileSizeBytes = encryptedFile.length()
+        val fileSizeMB = fileSizeBytes / (1024 * 1024)
+        
+        return when {
+            // For very large files (>200MB), stream 20MB initially
+            fileSizeMB > 200 -> 20 * 1024 * 1024L
+            
+            // For large files (100-200MB), stream 15MB initially  
+            fileSizeMB > 100 -> 15 * 1024 * 1024L
+            
+            // For medium files (50-100MB), stream 12MB initially
+            fileSizeMB > 50 -> 12 * 1024 * 1024L
+            
+            // For smaller files (20-50MB), stream 8MB initially
+            fileSizeMB > 20 -> 8 * 1024 * 1024L
+            
+            // For small files (<20MB), stream 25% initially
+            else -> maxOf(fileSizeBytes / 4, 2 * 1024 * 1024L)
+        }
+    }
+
+    /**
      * Decrypt entire video to temporary file
      */
     private suspend fun decryptVideoToTempFile(

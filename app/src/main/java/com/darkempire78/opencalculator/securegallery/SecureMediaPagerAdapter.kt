@@ -15,6 +15,8 @@ import android.view.ViewGroup
 import android.widget.ProgressBar
 import android.widget.VideoView
 import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import com.darkempire78.opencalculator.R
 import com.github.chrisbanes.photoview.PhotoView
 import java.io.File
@@ -612,11 +614,40 @@ class SecureMediaPagerAdapter(
                 // Decrypt and prepare video in background thread
                 Thread {
                     try {
-                        Log.d("SecureMediaPagerAdapter", "Starting video decryption in background for: ${media.name}")
+                        Log.d("SecureMediaPagerAdapter", "Starting quick video preparation for: ${media.name}")
                         
-                        // Create temporary file for video playback
-                        var tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
-                        tempFiles.add(tempFile)
+                // Use SecureVideoManager for optimized streaming
+                Thread {
+                    try {
+                        val secureVideoManager = SecureVideoManager.getInstance(context)
+                        runBlocking {
+                            val tempFile = secureVideoManager.prepareVideoQuickly(
+                                File(media.filePath), 
+                                key
+                            )
+                            
+                            if (tempFile != null && tempFile.exists()) {
+                                Log.d("SecureMediaPagerAdapter", "Quick video preparation succeeded for: ${media.name}, file size: ${tempFile.length()}")
+                                
+                                // Setup video on main thread
+                                activity.runOnUiThread {
+                                    setupVideoView(holder, tempFile, media.name)
+                                }
+                            } else {
+                                Log.e("SecureMediaPagerAdapter", "Quick video preparation failed for: ${media.name}")
+                                activity.runOnUiThread {
+                                    holder.loadingContainer.visibility = View.GONE
+                                }
+                            }
+                        }
+                        
+                    } catch (e: Exception) {
+                        Log.e("SecureMediaPagerAdapter", "Error in quick video preparation for: ${media.name}", e)
+                        activity.runOnUiThread {
+                            holder.loadingContainer.visibility = View.GONE
+                        }
+                    }
+                }.start()
                         
                         if (media.usesExternalStorage()) {
                             // For file-based storage, stream decrypt to avoid loading entire file into memory
