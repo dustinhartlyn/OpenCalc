@@ -618,23 +618,11 @@ class GalleryActivity : AppCompatActivity() {
         thumbnailGenerationComplete = false
         thumbnailsBeingGenerated.clear()
         
-        // Show loading indicator in the UI instead of blocking dialog
-        if (media.isNotEmpty()) {
-            val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
-            galleryLoadingIndicator = findViewById<android.widget.ProgressBar>(R.id.loadingProgressBar)
-            galleryLoadingText = findViewById<android.widget.TextView>(R.id.loadingText)
-            
-            Log.d(TAG, "Setting up loading UI - container: ${loadingContainer != null}, indicator: ${galleryLoadingIndicator != null}, text: ${galleryLoadingText != null}")
-            
-            loadingContainer?.visibility = android.view.View.VISIBLE
-            galleryLoadingIndicator?.visibility = android.view.View.VISIBLE
-            galleryLoadingText?.visibility = android.view.View.VISIBLE
-            // Double the max to account for both media loading and thumbnail generation
-            galleryLoadingIndicator?.max = media.size * 2
-            galleryLoadingIndicator?.progress = 0
-            galleryLoadingText?.text = "Loading media..."
-            
-            Log.d(TAG, "Loading UI setup complete - max: ${media.size * 2}, progress: 0")
+        // Progress bar should already be showing from showProgressBarForThumbnails()
+        // Update the progress bar text to reflect current phase
+        runOnUiThread {
+            galleryLoadingText?.text = "Loading media and generating thumbnails..."
+            Log.d(TAG, "Updated progress bar text for media loading phase")
         }
         
         // Immediately initialize the decryptedMedia list with the correct size
@@ -815,6 +803,43 @@ class GalleryActivity : AppCompatActivity() {
                     // Don't break the loop on error, continue monitoring
                     Thread.sleep(1000)
                 }
+            }
+        }
+    }
+    
+    // Show progress bar for thumbnail generation process
+    private fun showProgressBarForThumbnails(mediaCount: Int) {
+        runOnUiThread {
+            try {
+                val loadingContainer = findViewById<LinearLayout>(R.id.loadingContainer)
+                galleryLoadingIndicator = findViewById<android.widget.ProgressBar>(R.id.loadingProgressBar)
+                galleryLoadingText = findViewById<android.widget.TextView>(R.id.loadingText)
+                
+                if (loadingContainer != null && galleryLoadingIndicator != null) {
+                    loadingContainer.visibility = View.VISIBLE
+                    galleryLoadingIndicator?.max = mediaCount
+                    galleryLoadingIndicator?.progress = 0
+                    galleryLoadingText?.text = "Generating thumbnails..."
+                    
+                    Log.d(TAG, "Progress bar shown for $mediaCount thumbnails")
+                } else {
+                    Log.w(TAG, "Could not find progress bar UI elements")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing progress bar", e)
+            }
+        }
+    }
+    
+    // Hide progress bar
+    private fun hideProgressBar() {
+        runOnUiThread {
+            try {
+                val loadingContainer = findViewById<LinearLayout>(R.id.loadingContainer)
+                loadingContainer?.visibility = View.GONE
+                Log.d(TAG, "Progress bar hidden")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error hiding progress bar", e)
             }
         }
     }
@@ -1811,6 +1836,12 @@ class GalleryActivity : AppCompatActivity() {
         
         photosRecyclerView.adapter = photosAdapter
 
+        // Show progress bar immediately for thumbnail generation process
+        if (key != null && media.isNotEmpty()) {
+            android.util.Log.d("SecureGallery", "Showing progress bar for ${media.size} media items")
+            showProgressBarForThumbnails(media.size)
+        }
+
         // Defer thumbnail loading to prevent main thread blocking during startup
         // This prevents the immediate onPause that was causing screen management issues
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -1821,7 +1852,10 @@ class GalleryActivity : AppCompatActivity() {
                     loadInitialThumbnails(media, key)
                 } else {
                     android.util.Log.w("SecureGallery", "No media to load: key=${key != null}, media.size=${media.size}")
+                    hideProgressBar()
                 }
+            } else {
+                hideProgressBar()
             }
         }, 200) // 200ms delay to let activity fully initialize
 

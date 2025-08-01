@@ -784,93 +784,21 @@ class SecureMediaPagerAdapter(
             val uri = Uri.fromFile(tempFile)
             Log.d("SecureMediaPagerAdapter", "Created URI: $uri")
             
-            // Set video URI first
-            holder.videoView.setVideoURI(uri)
-            Log.d("SecureMediaPagerAdapter", "Video URI set successfully")
-            
-            // Set up video listeners
-            holder.videoView.setOnPreparedListener { mediaPlayer ->
-                Log.d("SecureMediaPagerAdapter", "Video prepared: $videoName")
-                
-                try {
-                    // Hide loading indicator and show video
-                    holder.loadingContainer.visibility = View.GONE
-                    holder.videoView.visibility = View.VISIBLE
-                    
-                    // Set video to loop
-                    mediaPlayer.isLooping = true
-                    
-                    // Start playing automatically
-                    holder.videoView.start()
-                    Log.d("SecureMediaPagerAdapter", "Video started playing: $videoName")
-                } catch (e: Exception) {
-                    Log.e("SecureMediaPagerAdapter", "Error in onPrepared for $videoName", e)
-                }
-            }
-            
-            // Add tap-to-pause functionality for VideoView
-            holder.videoView.setOnClickListener {
-                try {
-                    if (holder.videoView.isPlaying) {
-                        holder.videoView.pause()
-                        Log.d("SecureMediaPagerAdapter", "Video paused by tap: $videoName")
-                    } else {
-                        holder.videoView.start()
-                        Log.d("SecureMediaPagerAdapter", "Video resumed by tap: $videoName")
-                    }
-                } catch (e: Exception) {
-                    Log.w("SecureMediaPagerAdapter", "Error handling VideoView tap", e)
-                }
-            }
-            
-            holder.videoView.setOnErrorListener { mediaPlayer, what, extra ->
-                Log.e("SecureMediaPagerAdapter", "Video error for $videoName: what=$what, extra=$extra")
-                holder.loadingContainer.visibility = View.GONE
-                
-                // Try to provide more specific error information
-                val errorMsg = when (what) {
-                    android.media.MediaPlayer.MEDIA_ERROR_IO -> "IO Error"
-                    android.media.MediaPlayer.MEDIA_ERROR_MALFORMED -> "Malformed media"
-                    android.media.MediaPlayer.MEDIA_ERROR_UNSUPPORTED -> "Unsupported media"
-                    android.media.MediaPlayer.MEDIA_ERROR_TIMED_OUT -> "Timed out"
-                    android.media.MediaPlayer.MEDIA_ERROR_SERVER_DIED -> "Server died"
-                    android.media.MediaPlayer.MEDIA_ERROR_UNKNOWN -> "Unknown error"
-                    else -> "Error code $what"
-                }
-                Log.e("SecureMediaPagerAdapter", "Video error details: $errorMsg, extra: $extra")
-                true
-            }
-            
-            holder.videoView.setOnInfoListener { mediaPlayer, what, extra ->
-                val infoMsg = when (what) {
-                    android.media.MediaPlayer.MEDIA_INFO_BUFFERING_START -> "Buffering started"
-                    android.media.MediaPlayer.MEDIA_INFO_BUFFERING_END -> "Buffering ended"
-                    android.media.MediaPlayer.MEDIA_INFO_VIDEO_RENDERING_START -> "Video rendering started"
-                    else -> "Info: what=$what, extra=$extra"
-                }
-                Log.d("SecureMediaPagerAdapter", "Video info for $videoName: $infoMsg")
-                false
-            }
-            
-            holder.videoView.setOnCompletionListener { mediaPlayer ->
-                // This shouldn't be called since we set looping to true
-                Log.d("SecureMediaPagerAdapter", "Video completed: $videoName")
-            }
+            // Skip VideoView setup and go directly to MediaPlayer + SurfaceView
+            // This approach is more reliable for large encrypted videos during swipe transitions
+            Log.d("SecureMediaPagerAdapter", "Skipping VideoView setup, going directly to MediaPlayer approach")
             
             Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
             
-            // Add a timeout to detect if VideoView never calls onPrepared
-            // Increased timeout for large video files that need more setup time
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (holder.loadingContainer.visibility == View.VISIBLE) {
-                    Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
-                    Log.w("SecureMediaPagerAdapter", "Switching to MediaPlayer with SurfaceView...")
-                    
-                    // Switch to MediaPlayer approach
-                    try {
-                        // Hide VideoView and show SurfaceView
-                        holder.videoView.visibility = View.GONE
-                        holder.surfaceView.visibility = View.VISIBLE
+            // Skip VideoView entirely and go directly to MediaPlayer + SurfaceView for reliability
+            // This eliminates the black screen issue during swipe transitions
+            Log.d("SecureMediaPagerAdapter", "Using MediaPlayer + SurfaceView approach directly for reliable playback")
+            
+            // Switch to MediaPlayer approach immediately
+            try {
+                // Hide VideoView and show SurfaceView
+                holder.videoView.visibility = View.GONE
+                holder.surfaceView.visibility = View.VISIBLE
                         
                         // Add tap-to-pause functionality for SurfaceView/MediaPlayer
                         holder.surfaceView.setOnClickListener {
@@ -952,8 +880,6 @@ class SecureMediaPagerAdapter(
                         Log.e("SecureMediaPagerAdapter", "Failed MediaPlayer approach for $videoName", e)
                         holder.loadingContainer.visibility = View.GONE
                     }
-                }
-            }, 6000) // 6 second timeout - increased for large video files
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
