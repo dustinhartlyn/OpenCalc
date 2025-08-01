@@ -860,6 +860,7 @@ class SecureMediaPagerAdapter(
             Log.d("SecureMediaPagerAdapter", "Video view setup completed for: $videoName")
             
             // Add a timeout to detect if VideoView never calls onPrepared
+            // Increased timeout for large video files that need more setup time
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 if (holder.loadingContainer.visibility == View.VISIBLE) {
                     Log.w("SecureMediaPagerAdapter", "Video preparation timeout for $videoName - onPrepared never called")
@@ -952,7 +953,7 @@ class SecureMediaPagerAdapter(
                         holder.loadingContainer.visibility = View.GONE
                     }
                 }
-            }, 3000) // 3 second timeout
+            }, 6000) // 6 second timeout - increased for large video files
             
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
