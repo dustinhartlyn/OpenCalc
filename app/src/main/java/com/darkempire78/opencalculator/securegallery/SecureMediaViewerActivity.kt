@@ -99,6 +99,55 @@ class SecureMediaViewerActivity : AppCompatActivity() {
             mediaViewPager.setCurrentItem(currentPosition, false)
             Log.d("SecureMediaViewer", "ViewPager setup complete")
             
+            // Handle page changes - setup callbacks while mediaViewPager is in scope
+            mediaViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+                override fun onPageSelected(position: Int) {
+                    super.onPageSelected(position)
+                    Log.d("SecureMediaViewer", "=== PAGE SELECTED EVENT ===")
+                    Log.d("SecureMediaViewer", "Page changed from $currentPosition to $position")
+                    
+                    if (position >= 0 && position < media.size) {
+                        val newMedia = media[position]
+                        Log.d("SecureMediaViewer", "New media: ${newMedia.name} (${newMedia.mediaType})")
+                    } else {
+                        Log.e("SecureMediaViewer", "Invalid position $position for media size ${media.size}")
+                        return
+                    }
+                    
+                    currentPosition = position
+                    
+                    // Use the new onPageChanged method that handles video transitions properly
+                    try {
+                        adapter.onPageChanged(position)
+                        Log.d("SecureMediaViewer", "Adapter page change notification sent successfully")
+                    } catch (e: Exception) {
+                        Log.e("SecureMediaViewer", "Error in adapter page change", e)
+                    }
+                }
+                
+                override fun onPageScrollStateChanged(state: Int) {
+                    super.onPageScrollStateChanged(state)
+                    val stateString = when (state) {
+                        ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
+                        ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
+                        ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
+                        else -> "UNKNOWN($state)"
+                    }
+                    Log.d("SecureMediaViewer", "Page scroll state changed to: $stateString")
+                    
+                    // When user starts swiping, immediately stop all videos to prevent conflicts
+                    if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
+                        Log.d("SecureMediaViewer", "User started swiping, stopping all videos")
+                        try {
+                            adapter.pauseAllVideos()
+                            Log.d("SecureMediaViewer", "Videos paused successfully")
+                        } catch (e: Exception) {
+                            Log.e("SecureMediaViewer", "Error pausing videos during drag", e)
+                        }
+                    }
+                }
+            })
+            
             // Continue with rest of onCreate...
         } catch (e: Exception) {
             Log.e("SecureMediaViewer", "Critical error in onCreate", e)
@@ -218,55 +267,6 @@ class SecureMediaViewerActivity : AppCompatActivity() {
             gestureDetector.onTouchEvent(event)
             false // Don't consume the event, let other views handle it
         }
-        
-        // Handle page changes
-        mediaViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
-                Log.d("SecureMediaViewer", "=== PAGE SELECTED EVENT ===")
-                Log.d("SecureMediaViewer", "Page changed from $currentPosition to $position")
-                
-                if (position >= 0 && position < media.size) {
-                    val newMedia = media[position]
-                    Log.d("SecureMediaViewer", "New media: ${newMedia.name} (${newMedia.mediaType})")
-                } else {
-                    Log.e("SecureMediaViewer", "Invalid position $position for media size ${media.size}")
-                    return
-                }
-                
-                currentPosition = position
-                
-                // Use the new onPageChanged method that handles video transitions properly
-                try {
-                    adapter.onPageChanged(position)
-                    Log.d("SecureMediaViewer", "Adapter page change notification sent successfully")
-                } catch (e: Exception) {
-                    Log.e("SecureMediaViewer", "Error in adapter page change", e)
-                }
-            }
-            
-            override fun onPageScrollStateChanged(state: Int) {
-                super.onPageScrollStateChanged(state)
-                val stateString = when (state) {
-                    ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
-                    ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
-                    ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
-                    else -> "UNKNOWN($state)"
-                }
-                Log.d("SecureMediaViewer", "Page scroll state changed to: $stateString")
-                
-                // When user starts swiping, immediately stop all videos to prevent conflicts
-                if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
-                    Log.d("SecureMediaViewer", "User started swiping, stopping all videos")
-                    try {
-                        adapter.pauseAllVideos()
-                        Log.d("SecureMediaViewer", "Videos paused successfully")
-                    } catch (e: Exception) {
-                        Log.e("SecureMediaViewer", "Error pausing videos during drag", e)
-                    }
-                }
-            }
-        })
         
         // Set up return behavior - return the current position
         setResult(Activity.RESULT_OK, Intent().putExtra("return_position", currentPosition))
