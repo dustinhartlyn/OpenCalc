@@ -41,6 +41,31 @@ class SecureMedia(
         }
     }
     
+    // Check if encrypted data is valid/available without loading into memory
+    fun hasValidEncryptedData(): Boolean {
+        return if (filePath != null) {
+            val file = java.io.File(filePath)
+            file.exists() && file.length() > 16 // Must be larger than IV size
+        } else {
+            _encryptedData.isNotEmpty()
+        }
+    }
+    
+    // Get size category for memory management
+    fun getMediaSize(): MediaSize {
+        val size = if (filePath != null) {
+            java.io.File(filePath).length()
+        } else {
+            _encryptedData.size.toLong()
+        }
+        
+        return when {
+            size < 10_000_000L -> MediaSize.SMALL   // < 10MB
+            size < 100_000_000L -> MediaSize.MEDIUM // < 100MB
+            else -> MediaSize.LARGE                 // >= 100MB
+        }
+    }
+    
     // Set the encrypted data (update memory or file)
     fun setEncryptedData(data: ByteArray) {
         if (filePath != null) {

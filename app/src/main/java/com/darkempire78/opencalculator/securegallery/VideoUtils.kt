@@ -77,7 +77,8 @@ object VideoUtils {
      */
     private fun generateMediaHash(secureMedia: SecureMedia): String {
         val identifier = if (secureMedia.usesExternalStorage()) {
-            secureMedia.filePath + secureMedia.name
+            val file = java.io.File(secureMedia.filePath!!)
+            secureMedia.filePath + secureMedia.name + file.length()
         } else {
             secureMedia.name + secureMedia.getEncryptedData().size
         }

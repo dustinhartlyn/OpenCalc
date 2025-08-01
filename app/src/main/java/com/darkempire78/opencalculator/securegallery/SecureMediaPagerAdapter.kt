@@ -206,6 +206,13 @@ class SecureMediaPagerAdapter(
         if (photoPreloadCache.containsKey(cacheKey)) return
         
         try {
+            // Skip preloading for medium and large files to avoid OOM
+            val mediaSize = media.getMediaSize()
+            if (mediaSize != MediaSize.SMALL) {
+                Log.d("SecureMediaPagerAdapter", "Skipping preload for ${mediaSize} file: ${media.name}")
+                return
+            }
+            
             val encryptedData = media.getEncryptedData()
             if (encryptedData.size < 16) return
             
@@ -318,15 +325,24 @@ class SecureMediaPagerAdapter(
             // Clear previous image to prevent displaying wrong content
             holder.cleanup()
             
-            // Validate media data before proceeding
-            val encryptedData = media.getEncryptedData()
-            if (encryptedData.isEmpty()) {
-                Log.e("SecureMediaPagerAdapter", "Empty encrypted data for photo: ${media.name}")
+            // Validate media data before proceeding (without loading entire file into memory)
+            if (!media.hasValidEncryptedData()) {
+                Log.e("SecureMediaPagerAdapter", "Invalid or missing encrypted data for photo: ${media.name}")
                 setErrorImage(holder)
                 return
             }
             
-            // First check if we have a preloaded bitmap
+            // Check media size for memory optimization
+            val mediaSize = media.getMediaSize()
+            Log.d("SecureMediaPagerAdapter", "Photo ${media.name} size category: $mediaSize")
+            
+            // For very large photos, use more conservative memory settings
+            val shouldUseLowMemoryMode = mediaSize == MediaSize.LARGE
+            if (shouldUseLowMemoryMode) {
+                Log.w("SecureMediaPagerAdapter", "Using low memory mode for large photo: ${media.name}")
+            }
+            
+            // First check if we have a preloaded bitmap  
             val cacheKey = media.name + "_" + media.id
             synchronized(photoPreloadCache) {
             photoPreloadCache[cacheKey]?.let { cachedBitmap ->
@@ -340,46 +356,21 @@ class SecureMediaPagerAdapter(
             // Load photo in background to prevent UI blocking
             Thread {
                 try {
-                    val encryptedData = media.getEncryptedData()
-                    if (encryptedData.size < 16) {
-                        Log.e("SecureMediaPagerAdapter", "Encrypted data too small for photo: ${media.name}")
-                        setErrorImage(holder)
-                        return@Thread
-                    }
-                    
-                    val iv = encryptedData.copyOfRange(0, 16)
-                    val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                    
-                    var decryptedBytes: ByteArray? = null
-                    
-                    // Try normal decryption first
-                    try {
-                        decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
-                    } catch (e: Exception) {
-                        Log.e("SecureMediaPagerAdapter", "Decryption failed for ${media.name}", e)
-                        setErrorImage(holder)
-                        return@Thread
-                    }
-                    
-                    if (decryptedBytes == null) {
-                        setErrorImage(holder)
-                        return@Thread
-                    }
-                    
-                    var bitmap: Bitmap? = null
-                    
-                    try {
-                        // Create bitmap with proper options to prevent OutOfMemoryError
-                        val options = BitmapFactory.Options().apply {
-                            inJustDecodeBounds = true
+                    val bitmap = if (media.usesExternalStorage()) {
+                        // For file-based storage, use streaming decryption
+                        decryptPhotoFromFile(media.filePath!!, key, mediaSize)
+                    } else {
+                        // For memory-based storage, decrypt data
+                        val encryptedData = media.getEncryptedData()
+                        if (encryptedData.size < 16) {
+                            Log.e("SecureMediaPagerAdapter", "Encrypted data too small for photo: ${media.name}")
+                            setErrorImage(holder)
+                            return@Thread
                         }
-                        BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
-                        
-                        // Calculate inSampleSize to reduce memory usage for large images
-                        val sampleSize = calculateInSampleSize(options, 2048, 2048)
-                        
-                        val decodeOptions = BitmapFactory.Options().apply {
-                            inSampleSize = sampleSize
+                        decryptPhotoFromData(encryptedData, key, mediaSize)
+                    }
+                    
+                    if (bitmap != null) {
                             inPreferredConfig = Bitmap.Config.ARGB_8888
                         }
                         
@@ -440,18 +431,93 @@ class SecureMediaPagerAdapter(
         val height = options.outHeight
         val width = options.outWidth
         var inSampleSize = 1
-        
+
         if (height > reqHeight || width > reqWidth) {
             val halfHeight = height / 2
             val halfWidth = width / 2
-            
-            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+
+            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
                 inSampleSize *= 2
             }
         }
         return inSampleSize
     }
     
+    private fun decryptPhotoFromFile(filePath: String, key: javax.crypto.spec.SecretKeySpec, mediaSize: MediaSize = MediaSize.SMALL): Bitmap? {
+        var inputStream: FileInputStream? = null
+        try {
+            val file = File(filePath)
+            inputStream = FileInputStream(file)
+            
+            // Read IV
+            val iv = ByteArray(16)
+            inputStream.read(iv)
+            
+            // Decrypt the rest of the file to a ByteArray
+            val cipherData = inputStream.readBytes()
+            val decryptedBytes = CryptoUtils.decrypt(iv, cipherData, key)
+            
+            // Create bitmap with proper options to prevent OutOfMemoryError
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+            
+            // Calculate inSampleSize based on media size - more aggressive for larger files
+            val targetSize = when (mediaSize) {
+                MediaSize.SMALL -> 2048   // Full quality for small files
+                MediaSize.MEDIUM -> 1536  // Reduced quality for medium files  
+                MediaSize.LARGE -> 1024   // Much lower quality for large files
+            }
+            val sampleSize = calculateInSampleSize(options, targetSize, targetSize)
+            
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            
+            return BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo from file: $filePath", e)
+            return null
+        } finally {
+            inputStream?.close()
+        }
+    }
+    
+    private fun decryptPhotoFromData(encryptedData: ByteArray, key: javax.crypto.spec.SecretKeySpec, mediaSize: MediaSize = MediaSize.SMALL): Bitmap? {
+        try {
+            val iv = encryptedData.copyOfRange(0, 16)
+            val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+            
+            val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+            
+            // Create bitmap with proper options to prevent OutOfMemoryError
+            val options = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, options)
+            
+            // Calculate inSampleSize based on media size - more aggressive for larger files
+            val targetSize = when (mediaSize) {
+                MediaSize.SMALL -> 2048   // Full quality for small files
+                MediaSize.MEDIUM -> 1536  // Reduced quality for medium files  
+                MediaSize.LARGE -> 1024   // Much lower quality for large files
+            }
+            val sampleSize = calculateInSampleSize(options, targetSize, targetSize)
+            
+            val decodeOptions = BitmapFactory.Options().apply {
+                inSampleSize = sampleSize
+                inPreferredConfig = Bitmap.Config.RGB_565
+            }
+            
+            return BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo from data", e)
+            return null
+        }
+    }
+
     private fun setErrorImage(holder: PhotoViewHolder) {
         Log.w("SecureMediaPagerAdapter", "Setting error image for photo holder")
         activityRef.get()?.runOnUiThread {
@@ -487,12 +553,21 @@ class SecureMediaPagerAdapter(
             // First cleanup any existing video state to prevent conflicts
             holder.cleanup()
             
-            // Validate media data before proceeding
-            val encryptedData = media.getEncryptedData()
-            if (encryptedData.isEmpty()) {
-                Log.e("SecureMediaPagerAdapter", "Empty encrypted data for video: ${media.name}")
+            // Validate media data before proceeding (without loading entire file into memory)
+            if (!media.hasValidEncryptedData()) {
+                Log.e("SecureMediaPagerAdapter", "Invalid or missing encrypted data for video: ${media.name}")
                 holder.loadingContainer.visibility = View.GONE
                 return
+            }
+            
+            // Check media size for memory optimization
+            val mediaSize = media.getMediaSize()
+            Log.d("SecureMediaPagerAdapter", "Video ${media.name} size category: $mediaSize")
+            
+            // For very large videos, show a warning and use most conservative approach
+            if (mediaSize == MediaSize.LARGE) {
+                Log.w("SecureMediaPagerAdapter", "Loading large video file (>100MB): ${media.name}")
+                // Could add user notification here in the future
             }
             
             // Set this as the current video holder AFTER cleanup and validation
