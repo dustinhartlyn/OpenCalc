@@ -95,9 +95,13 @@ class GalleryActivity : AppCompatActivity() {
     private val screenOffReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                android.util.Log.d("SecureGallery", "Screen off detected - isPhotoPickerActive: $isPhotoPickerActive, isMediaViewerActive: $isMediaViewerActive, securityTriggered: ${TempPinHolder.securityTriggered}")
                 // Only trigger security if not in photo picker, media viewer, or already triggered
                 if (!isPhotoPickerActive && !isMediaViewerActive && !TempPinHolder.securityTriggered) {
+                    android.util.Log.d("SecureGallery", "Triggering security due to screen off")
                     TempPinHolder.triggerSecurity("Screen turned off")
+                } else {
+                    android.util.Log.d("SecureGallery", "Skipping security trigger for screen off - flags: picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, triggered=${TempPinHolder.securityTriggered}")
                 }
             }
         }
@@ -109,14 +113,20 @@ class GalleryActivity : AppCompatActivity() {
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        android.util.Log.d("SecureGallery", "Media viewer returned - resultCode: ${result.resultCode}, isMediaViewerActive was: $isMediaViewerActive")
+        android.util.Log.d("SecureGallery", "Setting isMediaViewerActive = false")
         isMediaViewerActive = false // Reset the flag when media viewer returns
         if (result.resultCode == RESULT_OK) {
             val returnPosition = result.data?.getIntExtra("return_position", -1) ?: -1
+            android.util.Log.d("SecureGallery", "Media viewer return position: $returnPosition")
             if (returnPosition >= 0) {
                 // Optionally scroll to the position in the gallery that was being viewed
                 val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
                 photosRecyclerView.scrollToPosition(returnPosition)
+                android.util.Log.d("SecureGallery", "Scrolled gallery to position $returnPosition")
             }
+        } else {
+            android.util.Log.w("SecureGallery", "Media viewer returned with unexpected result code: ${result.resultCode}")
         }
     }
 
@@ -407,12 +417,22 @@ class GalleryActivity : AppCompatActivity() {
             val galleryName = intent.getStringExtra("gallery_name") ?: ""
             val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
             
+            android.util.Log.d("SecureGallery", "Loading thumbnail for ${mediaItem.name} (${mediaItem.mediaType}) at position $position, path: $thumbnailPath")
+            
             if (File(thumbnailPath).exists()) {
                 // Load the pre-generated encrypted thumbnail
+                android.util.Log.d("SecureGallery", "Thumbnail file exists, loading encrypted thumbnail")
                 val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                 val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
+                    android.util.Log.d("SecureGallery", "Getting video duration for: ${mediaItem.name}")
                     VideoUtils.getVideoDuration(mediaItem, key)
                 } else null
+                
+                if (thumbnailBitmap != null) {
+                    android.util.Log.d("SecureGallery", "Successfully loaded thumbnail for: ${mediaItem.name}, size: ${thumbnailBitmap.width}x${thumbnailBitmap.height}")
+                } else {
+                    android.util.Log.w("SecureGallery", "Thumbnail bitmap is null for: ${mediaItem.name}")
+                }
                 MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
             } else {
                 // Fallback: generate thumbnail if pre-generated one doesn't exist (for backwards compatibility)
@@ -803,16 +823,21 @@ class GalleryActivity : AppCompatActivity() {
                         }
                         MediaType.VIDEO -> {
                             // Use ThumbnailGenerator for consistent thumbnail handling
+                            android.util.Log.d("SecureGallery", "Processing video thumbnail for: ${mediaItem.name}, id: ${mediaItem.id}")
                             try {
                                 val filePath = if (mediaItem.usesExternalStorage()) {
+                                    android.util.Log.d("SecureGallery", "Video uses external storage: ${mediaItem.filePath}")
                                     mediaItem.filePath!!
                                 } else {
                                     // For internal storage, create a temporary file
+                                    android.util.Log.d("SecureGallery", "Video uses internal storage, creating temp file")
                                     val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
                                     tempFile.writeBytes(mediaItem.getEncryptedData())
+                                    android.util.Log.d("SecureGallery", "Created temp file: ${tempFile.absolutePath}, size: ${tempFile.length()} bytes")
                                     tempFile.absolutePath
                                 }
                                 
+                                android.util.Log.d("SecureGallery", "Generating video thumbnail from: $filePath")
                                 val thumbnailPath = ThumbnailGenerator.generateVideoThumbnailFromFile(
                                     this@GalleryActivity, 
                                     filePath, 
@@ -822,9 +847,13 @@ class GalleryActivity : AppCompatActivity() {
                                 )
                                 
                                 if (thumbnailPath != null) {
+                                    android.util.Log.d("SecureGallery", "Video thumbnail generated successfully: $thumbnailPath")
                                     processedCount++
+                                } else {
+                                    android.util.Log.w("SecureGallery", "Video thumbnail generation failed for: ${mediaItem.name}")
                                 }
                             } catch (e: Exception) {
+                                android.util.Log.e("SecureGallery", "Error processing video thumbnail for: ${mediaItem.name}", e)
                                 // Force garbage collection
                                 System.gc()
                                 Thread.sleep(500)
@@ -1184,11 +1213,15 @@ class GalleryActivity : AppCompatActivity() {
     
     override fun onPause() {
         val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "onPause() called - isPhotoPickerActive: $isPhotoPickerActive, isMediaViewerActive: $isMediaViewerActive, isNoteEditorActive: $isNoteEditorActive")
         super.onPause()
         
         // Trigger security immediately when app loses focus
         if (!isPhotoPickerActive && !isMediaViewerActive && !TempPinHolder.securityTriggered) {
+            android.util.Log.d("SecureGallery", "Triggering security due to onPause")
             TempPinHolder.triggerSecurity("App lost focus (onPause)")
+        } else {
+            android.util.Log.d("SecureGallery", "Skipping security trigger in onPause - flags: picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, triggered=${TempPinHolder.securityTriggered}")
         }
         
         // Disable security monitoring during pause
@@ -1197,14 +1230,19 @@ class GalleryActivity : AppCompatActivity() {
     
     override fun onStop() {
         val currentPin = TempPinHolder.pin ?: ""
+        android.util.Log.d("SecureGallery", "onStop() called - isPhotoPickerActive: $isPhotoPickerActive, isMediaViewerActive: $isMediaViewerActive, isRecreating: $isRecreating")
         super.onStop()
         
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
             // Trigger security immediately when app goes to background
             if (!TempPinHolder.securityTriggered) {
+                android.util.Log.d("SecureGallery", "Triggering security due to onStop")
                 TempPinHolder.triggerSecurity("App backgrounded (onStop)")
+            } else {
+                android.util.Log.d("SecureGallery", "Security already triggered, skipping onStop trigger")
             }
         } else {
+            android.util.Log.d("SecureGallery", "Skipping security trigger in onStop - flags: picker=$isPhotoPickerActive, viewer=$isMediaViewerActive, recreating=$isRecreating")
         }
     }
     
@@ -1307,6 +1345,7 @@ class GalleryActivity : AppCompatActivity() {
         // Initialize proper security manager
         securityManager = SecurityManager(this, object : SecurityManager.SecurityEventListener {
             override fun onSecurityTrigger(reason: String) {
+                android.util.Log.d("SecureGallery", "SecurityManager triggered: $reason")
                 closeGalleryForSecurity()
             }
         })
@@ -1314,6 +1353,7 @@ class GalleryActivity : AppCompatActivity() {
         // Register screen off receiver for immediate security triggering
         val screenOffFilter = IntentFilter(Intent.ACTION_SCREEN_OFF)
         registerReceiver(screenOffReceiver, screenOffFilter)
+        android.util.Log.d("SecureGallery", "Security initialized - SecurityManager and screen off receiver registered")
     }
     
     private fun cleanupSecurity() {
@@ -1332,6 +1372,12 @@ class GalleryActivity : AppCompatActivity() {
     private fun closeGalleryForSecurity() {
         val currentPin = TempPinHolder.pin ?: ""
         android.util.Log.d("SecureGallery", "closeGalleryForSecurity() called - PIN='$currentPin', securityTriggered=${TempPinHolder.securityTriggered}")
+        android.util.Log.d("SecureGallery", "Gallery closure context - isPhotoPickerActive: $isPhotoPickerActive, isMediaViewerActive: $isMediaViewerActive, isNoteEditorActive: $isNoteEditorActive")
+        
+        // Log current stack trace to see what triggered the closure
+        val stackTrace = Thread.currentThread().stackTrace
+        android.util.Log.d("SecureGallery", "Gallery closure stack trace: ${stackTrace.take(10).joinToString { "${it.className}.${it.methodName}:${it.lineNumber}" }}")
+        
         if (!TempPinHolder.securityTriggered) {
             // triggerSecurity() now automatically clears the PIN
             TempPinHolder.triggerSecurity("Gallery security closure")
@@ -1610,6 +1656,7 @@ class GalleryActivity : AppCompatActivity() {
                         }
                         
                         if (mediaThumbnail != null) {
+                            android.util.Log.d("SecureGallery", "Setting isMediaViewerActive = true for position $position")
                             isMediaViewerActive = true
                             val intent = android.content.Intent(this@GalleryActivity, SecureMediaViewerActivity::class.java)
                             intent.putExtra(SecureMediaViewerActivity.EXTRA_GALLERY_NAME, galleryName)
