@@ -39,8 +39,10 @@ object TempPinHolder {
     fun triggerSecurity(reason: String) {
         val stackTrace = Thread.currentThread().stackTrace
         val caller = if (stackTrace.size > 3) "${stackTrace[3].className}.${stackTrace[3].methodName}:${stackTrace[3].lineNumber}" else "unknown"
-        android.util.Log.d("SecureGallery", "TempPinHolder.triggerSecurity('$reason') called by $caller - count: $securityTriggerCount -> ${securityTriggerCount + 1}")
+        android.util.Log.d("SecureGallery", "TempPinHolder.triggerSecurity('$reason') called by $caller - immediately clearing PIN")
         securityTriggerCount++
+        // Clear PIN immediately on any security trigger
+        _pin = null
     }
     
     fun getSecurityTriggerCount(): Int = securityTriggerCount

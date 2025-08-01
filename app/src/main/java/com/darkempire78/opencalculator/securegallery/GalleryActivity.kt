@@ -91,6 +91,18 @@ class GalleryActivity : AppCompatActivity() {
     private var securityStartTime = 0L
     private var resumeTime = 0L
     
+    // Screen off receiver for immediate security triggering
+    private val screenOffReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                // Only trigger security if not in photo picker, media viewer, or already triggered
+                if (!isPhotoPickerActive && !isMediaViewerActive && !TempPinHolder.securityTriggered) {
+                    TempPinHolder.triggerSecurity("Screen turned off")
+                }
+            }
+        }
+    }
+    
     // Gallery loading progress
     private var galleryLoadingIndicator: android.widget.ProgressBar? = null
     private var galleryLoadingText: android.widget.TextView? = null
@@ -1174,6 +1186,11 @@ class GalleryActivity : AppCompatActivity() {
         val currentPin = TempPinHolder.pin ?: ""
         super.onPause()
         
+        // Trigger security immediately when app loses focus
+        if (!isPhotoPickerActive && !isMediaViewerActive && !TempPinHolder.securityTriggered) {
+            TempPinHolder.triggerSecurity("App lost focus (onPause)")
+        }
+        
         // Disable security monitoring during pause
         securityManager?.disable()
     }
@@ -1183,10 +1200,8 @@ class GalleryActivity : AppCompatActivity() {
         super.onStop()
         
         if (!isPhotoPickerActive && !isMediaViewerActive && !isRecreating) {
-            val timeSinceSecurityStart = System.currentTimeMillis() - securityStartTime
-            
-            // Only trigger security if not already triggered (e.g., by face-down detection)
-            if (!TempPinHolder.securityTriggered && timeSinceSecurityStart > 3000) {
+            // Trigger security immediately when app goes to background
+            if (!TempPinHolder.securityTriggered) {
                 TempPinHolder.triggerSecurity("App backgrounded (onStop)")
             }
         } else {
@@ -1295,22 +1310,32 @@ class GalleryActivity : AppCompatActivity() {
                 closeGalleryForSecurity()
             }
         })
+        
+        // Register screen off receiver for immediate security triggering
+        val screenOffFilter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        registerReceiver(screenOffReceiver, screenOffFilter)
     }
     
     private fun cleanupSecurity() {
         // Cleanup security manager
         securityManager?.disable()
         securityManager = null
+        
+        // Unregister screen off receiver
+        try {
+            unregisterReceiver(screenOffReceiver)
+        } catch (e: IllegalArgumentException) {
+            // Receiver was not registered, ignore
+        }
     }
     
     private fun closeGalleryForSecurity() {
         val currentPin = TempPinHolder.pin ?: ""
         android.util.Log.d("SecureGallery", "closeGalleryForSecurity() called - PIN='$currentPin', securityTriggered=${TempPinHolder.securityTriggered}")
         if (!TempPinHolder.securityTriggered) {
+            // triggerSecurity() now automatically clears the PIN
             TempPinHolder.triggerSecurity("Gallery security closure")
-            // Clear PIN from memory for security - user must re-enter PIN to access gallery again
             android.util.Log.d("SecureGallery", "Security triggered - clearing PIN and finishing activity")
-            TempPinHolder.clear()
             finish() // Close gallery and return to calculator
         }
     }
