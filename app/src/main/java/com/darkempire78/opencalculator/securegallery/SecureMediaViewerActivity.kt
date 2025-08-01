@@ -33,57 +33,79 @@ class SecureMediaViewerActivity : AppCompatActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_secure_media_viewer) // Use media viewer layout
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONCREATE START ===")
         
-        // Initialize GalleryManager context
-        GalleryManager.setContext(this)
-        
-        val galleryName = intent.getStringExtra(EXTRA_GALLERY_NAME) ?: ""
-        currentPosition = intent.getIntExtra(EXTRA_POSITION, 0)
-        val galleryPin = intent.getStringExtra(EXTRA_PIN) ?: ""
-        val gallerySalt = intent.getByteArrayExtra(EXTRA_SALT)
-        
-        Log.d("SecureMediaViewer", "Opening media viewer for gallery: $galleryName, position: $currentPosition")
-        
-        // Get gallery data
-        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
-        if (gallery == null) {
-            Log.e("SecureMediaViewer", "Gallery not found: $galleryName")
+        try {
+            setContentView(R.layout.activity_secure_media_viewer) // Use media viewer layout
+            
+            // Initialize GalleryManager context
+            GalleryManager.setContext(this)
+            
+            val galleryName = intent.getStringExtra(EXTRA_GALLERY_NAME) ?: ""
+            currentPosition = intent.getIntExtra(EXTRA_POSITION, 0)
+            val galleryPin = intent.getStringExtra(EXTRA_PIN) ?: ""
+            val gallerySalt = intent.getByteArrayExtra(EXTRA_SALT)
+            
+            Log.d("SecureMediaViewer", "Intent data - Gallery: $galleryName, Position: $currentPosition, PIN: ${galleryPin.isNotEmpty()}, Salt: ${gallerySalt != null}")
+            
+            // Get gallery data
+            val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+            if (gallery == null) {
+                Log.e("SecureMediaViewer", "Gallery not found: $galleryName")
+                Log.e("SecureMediaViewer", "Available galleries: ${GalleryManager.getGalleries().map { it.name }}")
+                finish()
+                return
+            }
+            
+            media = gallery.media
+            Log.d("SecureMediaViewer", "Gallery loaded - Media count: ${media.size}")
+            
+            if (media.isEmpty()) {
+                Log.w("SecureMediaViewer", "No media items in gallery")
+                Toast.makeText(this, "No media items found", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+            
+            // Log media details
+            media.forEachIndexed { index, item ->
+                Log.d("SecureMediaViewer", "  [$index] ${item.name} (${item.mediaType})")
+            }
+            
+            // Ensure position is valid
+            if (currentPosition >= media.size) {
+                Log.w("SecureMediaViewer", "Position $currentPosition >= media size ${media.size}, adjusting to ${media.size - 1}")
+                currentPosition = media.size - 1
+            }
+            if (currentPosition < 0) {
+                Log.w("SecureMediaViewer", "Position $currentPosition < 0, adjusting to 0")
+                currentPosition = 0
+            }
+            
+            Log.d("SecureMediaViewer", "Final position: $currentPosition, Media: ${media[currentPosition].name}")
+            
+            // Setup ViewPager2 with media adapter
+            val mediaViewPager = findViewById<ViewPager2>(R.id.mediaViewPager)
+            if (mediaViewPager == null) {
+                Log.e("SecureMediaViewer", "Failed to find mediaViewPager in layout")
+                Toast.makeText(this, "Layout error: ViewPager not found", Toast.LENGTH_SHORT).show()
+                finish()
+                return
+            }
+            
+            Log.d("SecureMediaViewer", "Creating adapter with ${media.size} media items")
+            adapter = SecureMediaPagerAdapter(this, media, galleryPin, gallerySalt)
+            mediaViewPager.adapter = adapter
+            mediaViewPager.setCurrentItem(currentPosition, false)
+            Log.d("SecureMediaViewer", "ViewPager setup complete")
+            
+            // Continue with rest of onCreate...
+        } catch (e: Exception) {
+            Log.e("SecureMediaViewer", "Critical error in onCreate", e)
+            Toast.makeText(this, "Error opening media viewer: ${e.message}", Toast.LENGTH_LONG).show()
             finish()
             return
         }
-        
-        media = gallery.media
-        
-        if (media.isEmpty()) {
-            Log.w("SecureMediaViewer", "No media items in gallery")
-            Toast.makeText(this, "No media items found", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        // Ensure position is valid
-        if (currentPosition >= media.size) {
-            currentPosition = media.size - 1
-        }
-        if (currentPosition < 0) {
-            currentPosition = 0
-        }
-        
-        Log.d("SecureMediaViewer", "Media count: ${media.size}, starting position: $currentPosition")
-        
-        // Setup ViewPager2 with media adapter
-        val mediaViewPager = findViewById<ViewPager2>(R.id.mediaViewPager)
-        if (mediaViewPager == null) {
-            Log.e("SecureMediaViewer", "Failed to find mediaViewPager in layout")
-            Toast.makeText(this, "Layout error: ViewPager not found", Toast.LENGTH_SHORT).show()
-            finish()
-            return
-        }
-        
-        adapter = SecureMediaPagerAdapter(this, media, galleryPin, gallerySalt)
-        mediaViewPager.adapter = adapter
-        mediaViewPager.setCurrentItem(currentPosition, false)
         
         // Add a touch interceptor view on top of ViewPager2 to ensure gesture detection
         val touchInterceptor = findViewById<View>(android.R.id.content)
@@ -201,19 +223,47 @@ class SecureMediaViewerActivity : AppCompatActivity() {
         mediaViewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 super.onPageSelected(position)
+                Log.d("SecureMediaViewer", "=== PAGE SELECTED EVENT ===")
+                Log.d("SecureMediaViewer", "Page changed from $currentPosition to $position")
+                
+                if (position >= 0 && position < media.size) {
+                    val newMedia = media[position]
+                    Log.d("SecureMediaViewer", "New media: ${newMedia.name} (${newMedia.mediaType})")
+                } else {
+                    Log.e("SecureMediaViewer", "Invalid position $position for media size ${media.size}")
+                    return
+                }
+                
                 currentPosition = position
-                Log.d("SecureMediaViewer", "Page changed to position: $position")
                 
                 // Use the new onPageChanged method that handles video transitions properly
-                adapter.onPageChanged(position)
+                try {
+                    adapter.onPageChanged(position)
+                    Log.d("SecureMediaViewer", "Adapter page change notification sent successfully")
+                } catch (e: Exception) {
+                    Log.e("SecureMediaViewer", "Error in adapter page change", e)
+                }
             }
             
             override fun onPageScrollStateChanged(state: Int) {
                 super.onPageScrollStateChanged(state)
+                val stateString = when (state) {
+                    ViewPager2.SCROLL_STATE_IDLE -> "IDLE"
+                    ViewPager2.SCROLL_STATE_DRAGGING -> "DRAGGING"
+                    ViewPager2.SCROLL_STATE_SETTLING -> "SETTLING"
+                    else -> "UNKNOWN($state)"
+                }
+                Log.d("SecureMediaViewer", "Page scroll state changed to: $stateString")
+                
                 // When user starts swiping, immediately stop all videos to prevent conflicts
                 if (state == ViewPager2.SCROLL_STATE_DRAGGING) {
-                    adapter.pauseAllVideos()
                     Log.d("SecureMediaViewer", "User started swiping, stopping all videos")
+                    try {
+                        adapter.pauseAllVideos()
+                        Log.d("SecureMediaViewer", "Videos paused successfully")
+                    } catch (e: Exception) {
+                        Log.e("SecureMediaViewer", "Error pausing videos during drag", e)
+                    }
                 }
             }
         })
@@ -253,19 +303,42 @@ class SecureMediaViewerActivity : AppCompatActivity() {
     
     override fun onPause() {
         super.onPause()
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONPAUSE ===")
         // Pause all videos when activity loses focus
-        adapter.pauseAllVideos()
+        try {
+            adapter.pauseAllVideos()
+            Log.d("SecureMediaViewer", "Videos paused successfully")
+        } catch (e: Exception) {
+            Log.e("SecureMediaViewer", "Error pausing videos in onPause", e)
+        }
     }
     
     override fun onResume() {
         super.onResume()
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONRESUME ===")
         // Videos will automatically resume when they come into view
         // No explicit resume needed with the current implementation
     }
     
     override fun onDestroy() {
         super.onDestroy()
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONDESTROY ===")
         // Clean up any temporary files created by video playback
-        adapter.cleanup()
+        try {
+            adapter.cleanup()
+            Log.d("SecureMediaViewer", "Adapter cleanup completed")
+        } catch (e: Exception) {
+            Log.e("SecureMediaViewer", "Error during adapter cleanup", e)
+        }
+    }
+    
+    override fun onStop() {
+        super.onStop()
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONSTOP ===")
+    }
+    
+    override fun onStart() {
+        super.onStart()
+        Log.d("SecureMediaViewer", "=== ACTIVITY ONSTART ===")
     }
 }

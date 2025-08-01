@@ -599,7 +599,12 @@ class GalleryActivity : AppCompatActivity() {
     
     // Load only initial thumbnails quickly, then load rest in background
     private fun loadInitialThumbnails(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
-        // Start thumbnail loading in background
+        Log.d(TAG, "=== MEDIA LOADING START ===")
+        Log.d(TAG, "Starting thumbnail loading for ${media.size} media items")
+        Log.d(TAG, "Media items details:")
+        media.forEachIndexed { index, item ->
+            Log.d(TAG, "  [$index] ${item.name} (${item.mediaType}) - ID: ${item.id}, Size: ${item.getMediaSize()}")
+        }
         
         // Show loading indicator in the UI instead of blocking dialog
         if (media.isNotEmpty()) {
@@ -607,45 +612,59 @@ class GalleryActivity : AppCompatActivity() {
             galleryLoadingIndicator = findViewById<android.widget.ProgressBar>(R.id.loadingProgressBar)
             galleryLoadingText = findViewById<android.widget.TextView>(R.id.loadingText)
             
+            Log.d(TAG, "Setting up loading UI - container: ${loadingContainer != null}, indicator: ${galleryLoadingIndicator != null}, text: ${galleryLoadingText != null}")
+            
             loadingContainer?.visibility = android.view.View.VISIBLE
             galleryLoadingIndicator?.visibility = android.view.View.VISIBLE
             galleryLoadingText?.visibility = android.view.View.VISIBLE
             galleryLoadingIndicator?.max = media.size
             galleryLoadingIndicator?.progress = 0
             galleryLoadingText?.text = "Loading gallery..."
+            
+            Log.d(TAG, "Loading UI setup complete - max: ${media.size}, progress: 0")
         }
         
         // Immediately initialize the decryptedMedia list with the correct size
         runOnUiThread {
+            Log.d(TAG, "Initializing decryptedMedia list on UI thread")
             decryptedMedia.clear()
             // Pre-fill with nulls for all media items
             repeat(media.size) { decryptedMedia.add(null) }
-            
-            // Pre-fill decryptedMedia with null entries
+            Log.d(TAG, "DecryptedMedia list initialized with ${decryptedMedia.size} null entries")
             
             // Notify adapter immediately so it knows the full item count
             photosAdapter?.notifyDataSetChanged()
-            
+            Log.d(TAG, "Adapter notified of initial data change")
         }
         
         // Load thumbnails in background without any artificial limits
         thumbnailExecutor.execute {
-            // Start background thumbnail loading
+            Log.d(TAG, "Starting background thumbnail loading thread")
             
             var loadedCount = 0
+            var successCount = 0
+            var failureCount = 0
             val updateBatchSize = 3 // Update UI every 3 thumbnails to reduce main thread pressure
             
             media.forEachIndexed { index, mediaItem ->
                 try {
+                    Log.d(TAG, "Loading thumbnail [$index/${media.size}]: ${mediaItem.name}")
+                    val startTime = System.currentTimeMillis()
                     
                     val thumbnail = loadThumbnailOptimized(mediaItem, key, index)
+                    val loadTime = System.currentTimeMillis() - startTime
+                    
                     if (thumbnail != null) {
+                        successCount++
+                        Log.d(TAG, "Thumbnail loaded successfully [$index]: ${mediaItem.name} in ${loadTime}ms")
                         runOnUiThread {
                             if (index < decryptedMedia.size) {
                                 decryptedMedia[index] = thumbnail
+                                Log.v(TAG, "Updated decryptedMedia[$index] with thumbnail")
                                 // Only notify for individual items occasionally to reduce UI pressure
                                 if (index % updateBatchSize == 0 || index == media.size - 1) {
                                     photosAdapter?.notifyItemChanged(index)
+                                    Log.v(TAG, "Notified adapter of item change at $index")
                                 }
                                 
                                 loadedCount++
@@ -653,16 +672,22 @@ class GalleryActivity : AppCompatActivity() {
                                 if (index % updateBatchSize == 0 || index == media.size - 1) {
                                     galleryLoadingIndicator?.progress = loadedCount
                                     galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                    Log.v(TAG, "Updated loading progress: $loadedCount/${media.size}")
                                 }
+                            } else {
+                                Log.e(TAG, "Index $index out of bounds for decryptedMedia (size: ${decryptedMedia.size})")
                             }
                         }
                     } else {
+                        failureCount++
+                        Log.w(TAG, "Thumbnail loading failed [$index]: ${mediaItem.name} in ${loadTime}ms")
                         runOnUiThread {
                             loadedCount++
                             // Update progress even for failed thumbnails, but less frequently
                             if (index % updateBatchSize == 0 || index == media.size - 1) {
                                 galleryLoadingIndicator?.progress = loadedCount
                                 galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                Log.v(TAG, "Updated loading progress (failed): $loadedCount/${media.size}")
                             }
                         }
                     }
@@ -671,28 +696,35 @@ class GalleryActivity : AppCompatActivity() {
                     Thread.sleep(50) // Increased from 25ms to reduce main thread pressure
                     
                 } catch (e: Exception) {
+                    failureCount++
+                    Log.e(TAG, "Exception loading thumbnail [$index]: ${mediaItem.name}", e)
                     runOnUiThread {
                         loadedCount++
                         // Update progress even for failed thumbnails, but less frequently
                         if (index % updateBatchSize == 0 || index == media.size - 1) {
                             galleryLoadingIndicator?.progress = loadedCount
                             galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                            Log.v(TAG, "Updated loading progress (exception): $loadedCount/${media.size}")
                         }
                     }
                 }
             }
             
             // Final comprehensive UI update
+            Log.d(TAG, "Thumbnail loading complete - Success: $successCount, Failed: $failureCount, Total: ${media.size}")
             runOnUiThread {
                 val actualLoadedCount = decryptedMedia.count { it != null }
+                Log.d(TAG, "Final UI update - actualLoadedCount: $actualLoadedCount, decryptedMedia.size: ${decryptedMedia.size}")
                 
                 // Final batch update - notify all items at once for efficiency
                 photosAdapter?.notifyDataSetChanged()
+                Log.d(TAG, "Final adapter notification sent")
                 
                 // Force RecyclerView to recalculate everything
                 val photosRecyclerView = findViewById<RecyclerView>(R.id.photosRecyclerView)
                 photosRecyclerView.requestLayout()
                 photosRecyclerView.invalidate()
+                Log.d(TAG, "RecyclerView layout forced")
                 
                 // Hide loading indicator AFTER all UI operations are complete
                 val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)

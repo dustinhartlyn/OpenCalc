@@ -117,31 +117,47 @@ class SecureMediaPagerAdapter(
     
     // Handle page changes to ensure videos play correctly during swiping
     fun onPageChanged(position: Int) {
+        Log.d("SecureMediaPagerAdapter", "=== PAGE CHANGE EVENT ===")
         Log.d("SecureMediaPagerAdapter", "Page changed to position $position")
+        
+        if (position >= 0 && position < mediaList.size) {
+            val newMedia = mediaList[position]
+            Log.d("SecureMediaPagerAdapter", "New media: ${newMedia.name} (${newMedia.mediaType})")
+        } else {
+            Log.e("SecureMediaPagerAdapter", "Invalid position $position for mediaList size ${mediaList.size}")
+            return
+        }
         
         // Stop current video but don't clear currentVideoHolder yet
         currentVideoHolder?.let { holder ->
+            Log.d("SecureMediaPagerAdapter", "Stopping current video holder")
             try {
                 holder.mediaPlayer?.let { mp ->
                     if (mp.isPlaying) {
                         mp.stop()
                         mp.reset()
-                        Log.d("SecureMediaPagerAdapter", "Stopped current video for page change")
+                        Log.d("SecureMediaPagerAdapter", "Stopped and reset MediaPlayer for page change")
+                    } else {
+                        Log.d("SecureMediaPagerAdapter", "MediaPlayer was not playing")
                     }
                 }
                 if (holder.videoView.isPlaying) {
                     holder.videoView.stopPlayback()
                     holder.videoView.suspend()
                     Log.d("SecureMediaPagerAdapter", "Stopped VideoView for page change")
+                } else {
+                    Log.d("SecureMediaPagerAdapter", "VideoView was not playing")
                 }
                 // Reset UI state
                 holder.loadingContainer.visibility = View.GONE
                 holder.videoView.visibility = View.GONE
+                Log.d("SecureMediaPagerAdapter", "Reset video holder UI state")
             } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Error stopping video during page change", e)
+                Log.e("SecureMediaPagerAdapter", "Error stopping video during page change", e)
             }
-        }
+        } ?: Log.d("SecureMediaPagerAdapter", "No current video holder to stop")
         
+        Log.d("SecureMediaPagerAdapter", "Page change handling complete - new video will be set up automatically by bindVideo")
         // The new video will be set up automatically when bindVideo is called
         // No need to clear currentVideoHolder here as it will be updated by setCurrentVideoHolder
     }
@@ -541,10 +557,13 @@ class SecureMediaPagerAdapter(
     }
     
     private fun bindVideo(holder: VideoViewHolder, media: SecureMedia) {
-        Log.d("SecureMediaPagerAdapter", "Loading video: ${media.name}")
+        Log.d("SecureMediaPagerAdapter", "=== BINDING VIDEO ===")
+        Log.d("SecureMediaPagerAdapter", "Video: ${media.name}, ID: ${media.id}, Size: ${media.getMediaSize()}")
+        Log.d("SecureMediaPagerAdapter", "Current holder state - loading visible: ${holder.loadingContainer.visibility == View.VISIBLE}, video visible: ${holder.videoView.visibility == View.VISIBLE}")
         
         try {
             // First cleanup any existing video state to prevent conflicts
+            Log.d("SecureMediaPagerAdapter", "Cleaning up existing video state")
             holder.cleanup()
             
             // Validate media data before proceeding (without loading entire file into memory)
@@ -553,6 +572,7 @@ class SecureMediaPagerAdapter(
                 holder.loadingContainer.visibility = View.GONE
                 return
             }
+            Log.d("SecureMediaPagerAdapter", "Media validation passed for: ${media.name}")
             
             // Check media size for memory optimization
             val mediaSize = media.getMediaSize()
@@ -565,19 +585,22 @@ class SecureMediaPagerAdapter(
             }
             
             // Set this as the current video holder AFTER cleanup and validation
+            Log.d("SecureMediaPagerAdapter", "Setting as current video holder")
             setCurrentVideoHolder(holder)
         
             if (key != null) {
                 // Show loading indicator
                 holder.loadingContainer.visibility = View.VISIBLE
                 holder.videoView.visibility = View.GONE
+                Log.d("SecureMediaPagerAdapter", "Loading UI shown for video: ${media.name}")
                 
                 val currentPosition = mediaList.indexOf(media)
+                Log.d("SecureMediaPagerAdapter", "Video position in list: $currentPosition")
                 
                 // Check if video is already preloaded
                 val preloadedFile = preloadCache[currentPosition]
                 if (preloadedFile != null && preloadedFile.exists()) {
-                    Log.d("SecureMediaPagerAdapter", "Using preloaded video file for: ${media.name}")
+                    Log.d("SecureMediaPagerAdapter", "Using preloaded video file for: ${media.name}, file size: ${preloadedFile.length()}")
                     // Use preloaded file immediately
                     val activity = activityRef.get()
                     activity?.runOnUiThread {
