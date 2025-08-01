@@ -204,15 +204,8 @@ class SecureMediaViewerActivity : AppCompatActivity() {
                 currentPosition = position
                 Log.d("SecureMediaViewer", "Page changed to position: $position")
                 
-                // Pause all videos and update the current video holder
-                adapter.pauseAllVideos()
-                
-                // If the new page is a video, set it as current and resume if needed
-                val currentMedia = media.getOrNull(position)
-                if (currentMedia?.mediaType == MediaType.VIDEO) {
-                    // The adapter will handle setting the new current video holder in bindVideo
-                    // and resume playback automatically
-                }
+                // Use the new onPageChanged method that handles video transitions properly
+                adapter.onPageChanged(position)
             }
             
             override fun onPageScrollStateChanged(state: Int) {

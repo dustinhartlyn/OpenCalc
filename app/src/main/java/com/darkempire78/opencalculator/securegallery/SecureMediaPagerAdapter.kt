@@ -115,6 +115,37 @@ class SecureMediaPagerAdapter(
         currentVideoHolder = null
     }
     
+    // Handle page changes to ensure videos play correctly during swiping
+    fun onPageChanged(position: Int) {
+        Log.d("SecureMediaPagerAdapter", "Page changed to position $position")
+        
+        // Stop current video but don't clear currentVideoHolder yet
+        currentVideoHolder?.let { holder ->
+            try {
+                holder.mediaPlayer?.let { mp ->
+                    if (mp.isPlaying) {
+                        mp.stop()
+                        mp.reset()
+                        Log.d("SecureMediaPagerAdapter", "Stopped current video for page change")
+                    }
+                }
+                if (holder.videoView.isPlaying) {
+                    holder.videoView.stopPlayback()
+                    holder.videoView.suspend()
+                    Log.d("SecureMediaPagerAdapter", "Stopped VideoView for page change")
+                }
+                // Reset UI state
+                holder.loadingContainer.visibility = View.GONE
+                holder.videoView.visibility = View.GONE
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error stopping video during page change", e)
+            }
+        }
+        
+        // The new video will be set up automatically when bindVideo is called
+        // No need to clear currentVideoHolder here as it will be updated by setCurrentVideoHolder
+    }
+    
     private fun setCurrentVideoHolder(holder: VideoViewHolder) {
         // Stop previous video if different holder
         currentVideoHolder?.let { prevHolder ->
