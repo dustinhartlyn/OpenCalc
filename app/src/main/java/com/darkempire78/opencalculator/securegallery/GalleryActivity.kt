@@ -818,7 +818,6 @@ class GalleryActivity : AppCompatActivity() {
             }
         }
     }
-    }
 
     private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
         Thread {
