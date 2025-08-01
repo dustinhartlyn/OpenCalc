@@ -572,27 +572,8 @@ class SecureMediaPagerAdapter(
                             val inputStream = FileInputStream(encryptedFile)
                             val outputStream = FileOutputStream(tempFile)
                             
-                            // Read IV first
-                            val iv = ByteArray(16)
-                            inputStream.read(iv)
-                            
-                            // Decrypt using streaming cipher
-                            val cipher = CryptoUtils.createDecryptionCipher(iv, key)
-                            val buffer = ByteArray(8192) // 8KB buffer
-                            var bytesRead: Int
-                            
-                            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                                val decryptedData = cipher.update(buffer, 0, bytesRead)
-                                if (decryptedData != null) {
-                                    outputStream.write(decryptedData)
-                                }
-                            }
-                            
-                            // Final decryption step
-                            val finalData = cipher.doFinal()
-                            if (finalData.isNotEmpty()) {
-                                outputStream.write(finalData)
-                            }
+                            // Use existing streaming decryption method
+                            CryptoUtils.decryptStream(inputStream, outputStream, key)
                             
                             inputStream.close()
                             outputStream.close()
