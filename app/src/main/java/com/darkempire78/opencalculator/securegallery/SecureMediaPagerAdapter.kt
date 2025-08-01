@@ -616,111 +616,44 @@ class SecureMediaPagerAdapter(
                     try {
                         Log.d("SecureMediaPagerAdapter", "Starting quick video preparation for: ${media.name}")
                         
-                // Use SecureVideoManager for optimized streaming
-                Thread {
-                    try {
-                        val secureVideoManager = SecureVideoManager.getInstance(context)
-                        runBlocking {
-                            val tempFile = secureVideoManager.prepareVideoQuickly(
-                                File(media.filePath), 
-                                key
-                            )
-                            
-                            if (tempFile != null && tempFile.exists()) {
-                                Log.d("SecureMediaPagerAdapter", "Quick video preparation succeeded for: ${media.name}, file size: ${tempFile.length()}")
+                        // Create temporary file for video playback
+                        var tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
+                        tempFiles.add(tempFile)
+                        
+                        // Use SecureVideoManager for optimized streaming if available
+                        val secureVideoManager = try {
+                            SecureVideoManager.getInstance(context)
+                        } catch (e: Exception) {
+                            Log.w("SecureMediaPagerAdapter", "SecureVideoManager not available, using fallback approach", e)
+                            null
+                        }
+                        
+                        if (secureVideoManager != null) {
+                            // Use optimized quick preparation
+                            runBlocking {
+                                val quickFile = secureVideoManager.prepareVideoQuickly(
+                                    File(media.filePath ?: ""), 
+                                    key.encoded.toString(Charsets.UTF_8)
+                                )
                                 
-                                // Setup video on main thread
-                                activity.runOnUiThread {
-                                    setupVideoView(holder, tempFile, media.name)
-                                }
-                            } else {
-                                Log.e("SecureMediaPagerAdapter", "Quick video preparation failed for: ${media.name}")
-                                activity.runOnUiThread {
-                                    holder.loadingContainer.visibility = View.GONE
+                                if (quickFile != null && quickFile.exists()) {
+                                    Log.d("SecureMediaPagerAdapter", "Quick video preparation succeeded for: ${media.name}, file size: ${quickFile.length()}")
+                                    tempFile = quickFile
+                                } else {
+                                    Log.w("SecureMediaPagerAdapter", "Quick video preparation failed, using fallback for: ${media.name}")
+                                    // Fallback to standard decryption
+                                    performStandardVideoDecryption(media, tempFile, key)
                                 }
                             }
-                        }
-                        
-                    } catch (e: Exception) {
-                        Log.e("SecureMediaPagerAdapter", "Error in quick video preparation for: ${media.name}", e)
-                        activity.runOnUiThread {
-                            holder.loadingContainer.visibility = View.GONE
-                        }
-                    }
-                }.start()
-                        
-                        if (media.usesExternalStorage()) {
-                            // For file-based storage, stream decrypt to avoid loading entire file into memory
-                            Log.d("SecureMediaPagerAdapter", "Using file-based decryption for large video: ${media.name}")
-                            
-                            val encryptedFile = File(media.filePath!!)
-                            val inputStream = FileInputStream(encryptedFile)
-                            val outputStream = FileOutputStream(tempFile)
-                            
-                            // Use existing streaming decryption method
-                            CryptoUtils.decryptStream(inputStream, outputStream, key)
-                            
-                            inputStream.close()
-                            outputStream.close()
                         } else {
-                            // For in-memory storage, decrypt normally
-                            val encryptedData = media.getEncryptedData()
-                            if (encryptedData.size < 16) {
-                                Log.e("SecureMediaPagerAdapter", "Encrypted video data too small: ${encryptedData.size} bytes")
-                                throw IllegalStateException("Invalid encrypted video data")
-                            }
-                            
-                            val iv = encryptedData.copyOfRange(0, 16)
-                            val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                            val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
-                            
-                            Log.d("SecureMediaPagerAdapter", "Decrypted video data: ${decryptedBytes.size} bytes")
-                            
-                            val fos = FileOutputStream(tempFile)
-                            fos.write(decryptedBytes)
-                            fos.close()
-                            
-                            // Clear decrypted bytes from memory immediately
-                            System.gc()
+                            // Fallback to standard decryption
+                            performStandardVideoDecryption(media, tempFile, key)
                         }
-                        
-                        Log.d("SecureMediaPagerAdapter", "Video decryption completed: ${tempFile.length()} bytes")
                         
                         // Validate the decrypted video file
                         if (!tempFile.exists() || tempFile.length() < 1024) {
                             Log.e("SecureMediaPagerAdapter", "Video file validation failed: exists=${tempFile.exists()}, size=${tempFile.length()}")
                             throw IllegalStateException("Invalid decrypted video file")
-                        }
-                        
-                        // Force garbage collection to free up memory before video setup
-                        System.gc()
-                        
-                        // Small delay to allow GC to complete
-                        Thread.sleep(100)
-                        
-                        // Log memory usage
-                        val runtime = Runtime.getRuntime()
-                        val totalMemory = runtime.totalMemory()
-                        val freeMemory = runtime.freeMemory()
-                        val usedMemory = totalMemory - freeMemory
-                        
-                        Log.d("SecureMediaPagerAdapter", "Memory after decryption - Used: ${usedMemory / 1024 / 1024}MB, Free: ${freeMemory / 1024 / 1024}MB, Total: ${totalMemory / 1024 / 1024}MB")
-                        
-                        // Copy the file to a more accessible location in the external files directory
-                        val publicVideoDir = File(context.getExternalFilesDir(null), "temp_videos")
-                        if (!publicVideoDir.exists()) {
-                            publicVideoDir.mkdirs()
-                        }
-                        
-                        val publicVideoFile = File(publicVideoDir, "playback_${System.currentTimeMillis()}.mp4")
-                        try {
-                            tempFile.copyTo(publicVideoFile, overwrite = true)
-                            Log.d("SecureMediaPagerAdapter", "Video copied to public location: ${publicVideoFile.absolutePath}")
-                            
-                            // Use the public file for playback
-                            tempFile = publicVideoFile
-                        } catch (e: Exception) {
-                            Log.w("SecureMediaPagerAdapter", "Failed to copy video to public location, using original", e)
                         }
                         
                         // Setup video view on main thread with safety checks
@@ -915,6 +848,51 @@ class SecureMediaPagerAdapter(
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Exception in setupVideoView for $videoName", e)
             holder.loadingContainer.visibility = View.GONE
+        }
+    }
+    
+    private fun performStandardVideoDecryption(media: SecureMedia, tempFile: File, key: javax.crypto.spec.SecretKeySpec) {
+        try {
+            if (media.usesExternalStorage()) {
+                // For file-based storage, stream decrypt to avoid loading entire file into memory
+                Log.d("SecureMediaPagerAdapter", "Using file-based decryption for large video: ${media.name}")
+                
+                val encryptedFile = File(media.filePath!!)
+                val inputStream = FileInputStream(encryptedFile)
+                val outputStream = FileOutputStream(tempFile)
+                
+                // Use existing streaming decryption method
+                CryptoUtils.decryptStream(inputStream, outputStream, key)
+                
+                inputStream.close()
+                outputStream.close()
+            } else {
+                // For in-memory storage, decrypt normally
+                val encryptedData = media.getEncryptedData()
+                if (encryptedData.size < 16) {
+                    Log.e("SecureMediaPagerAdapter", "Encrypted video data too small: ${encryptedData.size} bytes")
+                    throw IllegalStateException("Invalid encrypted video data")
+                }
+                
+                val iv = encryptedData.copyOfRange(0, 16)
+                val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
+                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                
+                Log.d("SecureMediaPagerAdapter", "Decrypted video data: ${decryptedBytes.size} bytes")
+                
+                val fos = FileOutputStream(tempFile)
+                fos.write(decryptedBytes)
+                fos.close()
+                
+                // Clear decrypted bytes from memory immediately
+                System.gc()
+            }
+            
+            Log.d("SecureMediaPagerAdapter", "Standard video decryption completed: ${tempFile.length()} bytes")
+            
+        } catch (e: Exception) {
+            Log.e("SecureMediaPagerAdapter", "Error in standard video decryption for ${media.name}", e)
+            throw e
         }
     }
     
