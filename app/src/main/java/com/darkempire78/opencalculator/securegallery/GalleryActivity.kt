@@ -111,6 +111,12 @@ class GalleryActivity : AppCompatActivity() {
     private var galleryLoadingIndicator: android.widget.ProgressBar? = null
     private var galleryLoadingText: android.widget.TextView? = null
     
+    // Thumbnail generation tracking
+    private var totalMediaCount = 0
+    private var thumbnailGenerationCount = 0
+    private var thumbnailsBeingGenerated = mutableSetOf<String>()
+    private var thumbnailGenerationComplete = false
+    
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         android.util.Log.d("SecureGallery", "Media viewer returned - resultCode: ${result.resultCode}, isMediaViewerActive was: $isMediaViewerActive")
@@ -606,6 +612,12 @@ class GalleryActivity : AppCompatActivity() {
             Log.d(TAG, "  [$index] ${item.name} (${item.mediaType}) - ID: ${item.id}, Size: ${item.getMediaSize()}")
         }
         
+        // Initialize thumbnail generation tracking
+        totalMediaCount = media.size
+        thumbnailGenerationCount = 0
+        thumbnailGenerationComplete = false
+        thumbnailsBeingGenerated.clear()
+        
         // Show loading indicator in the UI instead of blocking dialog
         if (media.isNotEmpty()) {
             val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
@@ -617,11 +629,12 @@ class GalleryActivity : AppCompatActivity() {
             loadingContainer?.visibility = android.view.View.VISIBLE
             galleryLoadingIndicator?.visibility = android.view.View.VISIBLE
             galleryLoadingText?.visibility = android.view.View.VISIBLE
-            galleryLoadingIndicator?.max = media.size
+            // Double the max to account for both media loading and thumbnail generation
+            galleryLoadingIndicator?.max = media.size * 2
             galleryLoadingIndicator?.progress = 0
-            galleryLoadingText?.text = "Loading gallery..."
+            galleryLoadingText?.text = "Loading media..."
             
-            Log.d(TAG, "Loading UI setup complete - max: ${media.size}, progress: 0")
+            Log.d(TAG, "Loading UI setup complete - max: ${media.size * 2}, progress: 0")
         }
         
         // Immediately initialize the decryptedMedia list with the correct size
@@ -671,7 +684,7 @@ class GalleryActivity : AppCompatActivity() {
                                 // Update loading indicator less frequently
                                 if (index % updateBatchSize == 0 || index == media.size - 1) {
                                     galleryLoadingIndicator?.progress = loadedCount
-                                    galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                    galleryLoadingText?.text = "Loading media ($loadedCount/${media.size})..."
                                     Log.v(TAG, "Updated loading progress: $loadedCount/${media.size}")
                                 }
                             } else {
@@ -686,7 +699,7 @@ class GalleryActivity : AppCompatActivity() {
                             // Update progress even for failed thumbnails, but less frequently
                             if (index % updateBatchSize == 0 || index == media.size - 1) {
                                 galleryLoadingIndicator?.progress = loadedCount
-                                galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                                galleryLoadingText?.text = "Loading media ($loadedCount/${media.size})..."
                                 Log.v(TAG, "Updated loading progress (failed): $loadedCount/${media.size}")
                             }
                         }
@@ -703,15 +716,25 @@ class GalleryActivity : AppCompatActivity() {
                         // Update progress even for failed thumbnails, but less frequently
                         if (index % updateBatchSize == 0 || index == media.size - 1) {
                             galleryLoadingIndicator?.progress = loadedCount
-                            galleryLoadingText?.text = "Loading thumbnails ($loadedCount/${media.size})..."
+                            galleryLoadingText?.text = "Loading media ($loadedCount/${media.size})..."
                             Log.v(TAG, "Updated loading progress (exception): $loadedCount/${media.size}")
                         }
                     }
                 }
             }
             
+            // Media loading phase complete, now wait for thumbnail generation
+            Log.d(TAG, "Media loading complete - Success: $successCount, Failed: $failureCount, Total: ${media.size}")
+            runOnUiThread {
+                galleryLoadingText?.text = "Generating thumbnails..."
+                Log.d(TAG, "Starting thumbnail generation tracking phase")
+            }
+            
+            // Start monitoring thumbnail generation
+            monitorThumbnailGeneration(media)
+            
             // Final comprehensive UI update
-            Log.d(TAG, "Thumbnail loading complete - Success: $successCount, Failed: $failureCount, Total: ${media.size}")
+            Log.d(TAG, "All processing complete - Media: $successCount loaded, Thumbnails: $thumbnailGenerationCount generated")
             runOnUiThread {
                 val actualLoadedCount = decryptedMedia.count { it != null }
                 Log.d(TAG, "Final UI update - actualLoadedCount: $actualLoadedCount, decryptedMedia.size: ${decryptedMedia.size}")
@@ -725,14 +748,76 @@ class GalleryActivity : AppCompatActivity() {
                 photosRecyclerView.requestLayout()
                 photosRecyclerView.invalidate()
                 Log.d(TAG, "RecyclerView layout forced")
-                
-                // Hide loading indicator AFTER all UI operations are complete
-                val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
-                loadingContainer?.visibility = android.view.View.GONE
-                galleryLoadingIndicator?.visibility = android.view.View.GONE
-                galleryLoadingText?.visibility = android.view.View.GONE
             }
         }
+    }
+
+    // Monitor thumbnail generation progress and update progress bar accordingly
+    private fun monitorThumbnailGeneration(media: List<SecureMedia>) {
+        thumbnailExecutor.execute {
+            Log.d(TAG, "Starting thumbnail generation monitoring")
+            val galleryName = intent.getStringExtra("gallery_name") ?: ""
+            var previousThumbnailCount = 0
+            var stableCount = 0
+            val maxStableChecks = 20 // Wait for 10 seconds without changes before considering complete
+            
+            while (!thumbnailGenerationComplete) {
+                try {
+                    // Count existing thumbnail files
+                    var currentThumbnailCount = 0
+                    media.forEach { mediaItem ->
+                        val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                        if (File(thumbnailPath).exists()) {
+                            currentThumbnailCount++
+                        }
+                    }
+                    
+                    Log.v(TAG, "Thumbnail generation check: $currentThumbnailCount/${media.size} thumbnails exist")
+                    
+                    // Update progress if count changed
+                    if (currentThumbnailCount != previousThumbnailCount) {
+                        previousThumbnailCount = currentThumbnailCount
+                        stableCount = 0
+                        
+                        runOnUiThread {
+                            val totalProgress = media.size + currentThumbnailCount
+                            galleryLoadingIndicator?.progress = totalProgress
+                            galleryLoadingText?.text = "Generating thumbnails ($currentThumbnailCount/${media.size})..."
+                            Log.d(TAG, "Updated thumbnail generation progress: $currentThumbnailCount/${media.size}")
+                        }
+                    } else {
+                        stableCount++
+                    }
+                    
+                    // Check if we're done (all thumbnails exist or stable for too long)
+                    if (currentThumbnailCount >= media.size || stableCount >= maxStableChecks) {
+                        thumbnailGenerationComplete = true
+                        thumbnailGenerationCount = currentThumbnailCount
+                        
+                        Log.d(TAG, "Thumbnail generation monitoring complete: $currentThumbnailCount/${media.size} thumbnails")
+                        
+                        runOnUiThread {
+                            // Final UI cleanup
+                            val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
+                            loadingContainer?.visibility = android.view.View.GONE
+                            galleryLoadingIndicator?.visibility = android.view.View.GONE
+                            galleryLoadingText?.visibility = android.view.View.GONE
+                            Log.d(TAG, "Loading UI hidden after thumbnail generation complete")
+                        }
+                        break
+                    }
+                    
+                    // Wait before next check
+                    Thread.sleep(500) // Check every 500ms
+                    
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error monitoring thumbnail generation", e)
+                    // Don't break the loop on error, continue monitoring
+                    Thread.sleep(1000)
+                }
+            }
+        }
+    }
     }
 
     private fun loadThumbnailsAsync(media: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
@@ -1239,6 +1324,12 @@ class GalleryActivity : AppCompatActivity() {
         // Clean up loading indicator references
         galleryLoadingIndicator = null
         galleryLoadingText = null
+        
+        // Clean up thumbnail generation tracking
+        thumbnailsBeingGenerated.clear()
+        thumbnailGenerationComplete = false
+        totalMediaCount = 0
+        thumbnailGenerationCount = 0
         
         super.onDestroy()
     }
