@@ -362,9 +362,23 @@ class SecureMediaPagerAdapter(
             // Clear previous image to prevent displaying wrong content
             holder.cleanup()
             
-            // Ensure PhotoView is visible for photo display
+            // Ensure PhotoView is visible and other views are hidden for photo display
             holder.photoView.visibility = View.VISIBLE
-            Log.d("SecureMediaPagerAdapter", "Made PhotoView visible for photo display")
+            // Make sure we're not in a mixed holder scenario - hide any video views that might exist
+            try {
+                // These might not exist in PhotoViewHolder but safer to try
+                val videoView = holder.itemView.findViewById<VideoView>(R.id.videoView)
+                val surfaceView = holder.itemView.findViewById<SurfaceView>(R.id.surfaceView)
+                val loadingContainer = holder.itemView.findViewById<View>(R.id.loadingContainer)
+                
+                videoView?.visibility = View.GONE
+                surfaceView?.visibility = View.GONE
+                loadingContainer?.visibility = View.GONE
+            } catch (e: Exception) {
+                // Expected for PhotoViewHolders that don't have video views
+                Log.d("SecureMediaPagerAdapter", "Photo holder doesn't have video views (expected)")
+            }
+            Log.d("SecureMediaPagerAdapter", "Made PhotoView visible and ensured video views are hidden")
             
             // Validate media data before proceeding (without loading entire file into memory)
             if (!media.hasValidEncryptedData()) {
@@ -572,6 +586,16 @@ class SecureMediaPagerAdapter(
             // First cleanup any existing video state to prevent conflicts
             Log.d("SecureMediaPagerAdapter", "Cleaning up existing video state")
             holder.cleanup()
+            
+            // Ensure proper view state - hide any photo views that might exist
+            try {
+                val photoView = holder.itemView.findViewById<com.github.chrisbanes.photoview.PhotoView>(R.id.photoView)
+                photoView?.visibility = View.GONE
+                Log.d("SecureMediaPagerAdapter", "Hidden PhotoView for video display")
+            } catch (e: Exception) {
+                // Expected for VideoViewHolders that don't have photo views
+                Log.d("SecureMediaPagerAdapter", "Video holder doesn't have photo views (expected)")
+            }
             
             // Validate media data before proceeding (without loading entire file into memory)
             if (!media.hasValidEncryptedData()) {

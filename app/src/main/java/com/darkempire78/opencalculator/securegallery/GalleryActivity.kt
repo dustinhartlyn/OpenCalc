@@ -117,6 +117,7 @@ class GalleryActivity : AppCompatActivity() {
     private var thumbnailGenerationCount = 0
     private var thumbnailsBeingGenerated = mutableSetOf<String>()
     private var thumbnailGenerationComplete = false
+    private var progressBarShowTime = 0L // Track when progress bar was shown
     
     // Activity result launcher for photo viewer
     private val photoViewerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
@@ -852,12 +853,15 @@ class GalleryActivity : AppCompatActivity() {
                     loadingContainer.visibility = View.VISIBLE
                     galleryLoadingIndicator?.max = mediaCount
                     galleryLoadingIndicator?.progress = 0
-                    galleryLoadingIndicator?.progress = 0
                     galleryLoadingText?.text = "Generating thumbnails..."
                     
-                    Log.d(TAG, "Progress bar shown for $mediaCount thumbnails")
+                    Log.d(TAG, "✓ Progress bar SHOWN for $mediaCount thumbnails - container visible: ${loadingContainer.visibility == View.VISIBLE}")
+                    
+                    // Force a layout update to ensure visibility change takes effect
+                    loadingContainer.requestLayout()
+                    loadingContainer.invalidate()
                 } else {
-                    Log.w(TAG, "Could not find progress bar UI elements")
+                    Log.e(TAG, "✗ Could not find progress bar UI elements - container: ${loadingContainer != null}, indicator: ${galleryLoadingIndicator != null}")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error showing progress bar", e)
@@ -865,13 +869,33 @@ class GalleryActivity : AppCompatActivity() {
         }
     }
     
-    // Hide progress bar
+    // Hide progress bar with minimum display time
     private fun hideProgressBar() {
+        val minDisplayTime = 1500L // Minimum 1.5 seconds to show progress bar
+        val elapsedTime = System.currentTimeMillis() - progressBarShowTime
+        val remainingTime = maxOf(0L, minDisplayTime - elapsedTime)
+        
+        if (remainingTime > 0) {
+            Log.d(TAG, "⏱️ Delaying progress bar hide by ${remainingTime}ms to meet minimum display time")
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                hideProgressBarImmediately()
+            }, remainingTime)
+        } else {
+            hideProgressBarImmediately()
+        }
+    }
+    
+    private fun hideProgressBarImmediately() {
         runOnUiThread {
             try {
                 val loadingContainer = findViewById<LinearLayout>(R.id.loadingContainer)
-                loadingContainer?.visibility = View.GONE
-                Log.d(TAG, "Progress bar hidden")
+                if (loadingContainer != null) {
+                    val wasVisible = loadingContainer.visibility == View.VISIBLE
+                    loadingContainer.visibility = View.GONE
+                    Log.d(TAG, "✓ Progress bar HIDDEN - was visible: $wasVisible")
+                } else {
+                    Log.e(TAG, "✗ Could not find loading container to hide")
+                }
             } catch (e: Exception) {
                 Log.e(TAG, "Error hiding progress bar", e)
             }
@@ -1971,6 +1995,9 @@ class GalleryActivity : AppCompatActivity() {
         if (key != null && media.isNotEmpty()) {
             android.util.Log.d("SecureGallery", "Showing progress bar for ${media.size} media items")
             showProgressBarForThumbnails(media.size)
+            
+            // Record when we show the progress bar for minimum display time
+            progressBarShowTime = System.currentTimeMillis()
         }
 
         // Defer thumbnail loading to prevent main thread blocking during startup
