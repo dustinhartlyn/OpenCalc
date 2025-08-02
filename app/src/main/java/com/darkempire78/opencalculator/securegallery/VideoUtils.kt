@@ -246,7 +246,7 @@ object VideoUtils {
                 
                 for ((index, media) in videoItems.withIndex()) {
                     try {
-                        val existingThumbnail = loadCachedThumbnail(context, media, galleryName)
+                        val existingThumbnail = loadCachedThumbnail(context, media, galleryName, key)
                         if (existingThumbnail == null) {
                             Log.d("VideoUtils", "PRELOAD: Generating missing thumbnail for ${media.name} (${index + 1}/${videoItems.size})")
                             generateAndSaveThumbnail(context, media, key, galleryName)
