@@ -1003,7 +1003,7 @@ object VideoUtils {
             
             val buffer = ByteArray(8192)
             var totalBytesDecrypted = 0L
-            var bytesRead: Int
+            var bytesRead = 0
             
             while (totalBytesDecrypted < bytesToDecrypt && inputStream.read(buffer).also { bytesRead = it } != -1) {
                 val remainingBytes = (bytesToDecrypt - totalBytesDecrypted).toInt()

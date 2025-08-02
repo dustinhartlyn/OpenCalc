@@ -2092,9 +2092,9 @@ class GalleryActivity : AppCompatActivity() {
             exitNoteDeleteMode()
         }
         
-        // Clean up orphaned video thumbnails
-        if (gallery != null && media.isNotEmpty()) {
-            VideoUtils.cleanupOrphanedThumbnails(this, media)
+        // Clean up any old thumbnail caches on startup
+        if (gallery != null && media.isNotEmpty() && key != null) {
+            VideoUtils.validateAndRepairThumbnailCache(this, media, key)
         }
         
         android.util.Log.d("SecureGallery", "GalleryActivity onCreate() completed successfully")
