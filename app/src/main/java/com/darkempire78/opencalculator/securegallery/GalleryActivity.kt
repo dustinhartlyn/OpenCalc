@@ -765,7 +765,9 @@ class GalleryActivity : AppCompatActivity() {
                 Log.d(TAG, "Most thumbnails already exist ($initialThumbnailCount/${media.size}), hiding progress bar")
                 runOnUiThread {
                     galleryLoadingText?.text = "Loading gallery..."
-                    // Hide progress bar after brief delay since thumbnails already exist
+                }
+                // Hide progress bar after brief delay since thumbnails already exist
+                runOnUiThread {
                     Handler(Looper.getMainLooper()).postDelayed({
                         hideProgressBar()
                         Log.d(TAG, "Progress bar hidden - thumbnails already existed")
@@ -814,8 +816,10 @@ class GalleryActivity : AppCompatActivity() {
                             // Switch to loading phase briefly, then hide progress bar
                             galleryLoadingText?.text = "Loading gallery..."
                             Log.d(TAG, "Switching to loading phase after thumbnail generation")
-                            
-                            // Hide progress bar after a brief delay to indicate completion
+                        }
+                        
+                        // Hide progress bar after a brief delay to indicate completion
+                        runOnUiThread {
                             Handler(Looper.getMainLooper()).postDelayed({
                                 hideProgressBar()
                                 Log.d(TAG, "Progress bar hidden after thumbnail generation completion")

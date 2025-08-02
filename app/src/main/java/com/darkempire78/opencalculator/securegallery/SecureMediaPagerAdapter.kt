@@ -107,6 +107,7 @@ class SecureMediaPagerAdapter(
                 // Reset UI state
                 holder.loadingContainer.visibility = View.GONE
                 holder.videoView.visibility = View.GONE
+                holder.surfaceView.visibility = View.GONE
             } catch (e: Exception) {
                 Log.w("SecureMediaPagerAdapter", "Error stopping videos", e)
             }
@@ -152,6 +153,7 @@ class SecureMediaPagerAdapter(
                 // Reset UI state
                 holder.loadingContainer.visibility = View.GONE
                 holder.videoView.visibility = View.GONE
+                holder.surfaceView.visibility = View.GONE
                 Log.d("SecureMediaPagerAdapter", "Reset video holder UI state")
             } catch (e: Exception) {
                 Log.e("SecureMediaPagerAdapter", "Error stopping video during page change", e)
