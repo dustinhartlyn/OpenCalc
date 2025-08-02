@@ -749,6 +749,28 @@ class GalleryActivity : AppCompatActivity() {
             var stableCount = 0
             val maxStableChecks = 40 // Wait for 20 seconds without changes before considering complete
             
+            // Check if most thumbnails already exist - if so, skip to loading phase
+            var initialThumbnailCount = 0
+            media.forEach { mediaItem ->
+                val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
+                if (File(thumbnailPath).exists()) {
+                    initialThumbnailCount++
+                }
+            }
+            
+            // If most thumbnails exist, go directly to loading phase
+            val thumbnailExistRatio = if (media.isNotEmpty()) initialThumbnailCount.toFloat() / media.size else 0f
+            if (thumbnailExistRatio >= 0.8f) {
+                Log.d(TAG, "Most thumbnails already exist ($initialThumbnailCount/${media.size}), starting loading phase")
+                runOnUiThread {
+                    galleryLoadingText?.text = "Loading gallery..."
+                }
+                // Let the loading process handle progress from here
+                thumbnailGenerationComplete = true
+                thumbnailGenerationCount = initialThumbnailCount
+                return@execute
+            }
+            
             while (!thumbnailGenerationComplete) {
                 try {
                     // Count existing thumbnail files
@@ -784,12 +806,9 @@ class GalleryActivity : AppCompatActivity() {
                         Log.d(TAG, "Thumbnail generation monitoring complete: $currentThumbnailCount/${media.size} thumbnails")
                         
                         runOnUiThread {
-                            // Final UI cleanup
-                            val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
-                            loadingContainer?.visibility = android.view.View.GONE
-                            galleryLoadingIndicator?.visibility = android.view.View.GONE
-                            galleryLoadingText?.visibility = android.view.View.GONE
-                            Log.d(TAG, "Loading UI hidden after thumbnail generation complete")
+                            // Switch to loading phase instead of hiding immediately
+                            galleryLoadingText?.text = "Loading gallery..."
+                            Log.d(TAG, "Switching to loading phase after thumbnail generation")
                         }
                         break
                     }
@@ -1085,36 +1104,71 @@ class GalleryActivity : AppCompatActivity() {
         // Calculate where the new media starts in the full media list
         val startIndexInFullList = allMedia.size - encryptedMedia.size
         
-        // Load the pre-generated thumbnails for immediate display
-        encryptedMedia.forEachIndexed { localIndex, mediaItem ->
-            val globalIndex = startIndexInFullList + localIndex
+        // Run thumbnail loading on background thread with progress updates
+        thumbnailExecutor.execute {
+            Log.d(TAG, "Starting to load ${encryptedMedia.size} generated thumbnails")
+            var loadedCount = 0
             
-            try {
-                val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this, galleryName, mediaItem.id.toString())
-                if (File(thumbnailPath).exists()) {
-                    val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key)
-                    val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
-                        VideoUtils.getVideoDuration(mediaItem, key)
-                    } else null
-                    val thumbnail = MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
-                    
-                    // Ensure decryptedMedia list is large enough
-                    while (decryptedMedia.size <= globalIndex) {
-                        decryptedMedia.add(null)
+            // Update progress bar for loading phase
+            runOnUiThread {
+                galleryLoadingIndicator?.max = encryptedMedia.size
+                galleryLoadingIndicator?.progress = 0
+                galleryLoadingText?.text = "Loading gallery..."
+            }
+            
+            // Load the pre-generated thumbnails for immediate display
+            encryptedMedia.forEachIndexed { localIndex, mediaItem ->
+                val globalIndex = startIndexInFullList + localIndex
+                
+                try {
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this@GalleryActivity, galleryName, mediaItem.id.toString())
+                    if (File(thumbnailPath).exists()) {
+                        val thumbnailBitmap = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key)
+                        val duration = if (mediaItem.mediaType == MediaType.VIDEO) {
+                            VideoUtils.getVideoDuration(mediaItem, key)
+                        } else null
+                        val thumbnail = MediaThumbnail(thumbnailBitmap, duration, mediaItem.mediaType)
+                        
+                        runOnUiThread {
+                            // Ensure decryptedMedia list is large enough
+                            while (decryptedMedia.size <= globalIndex) {
+                                decryptedMedia.add(null)
+                            }
+                            
+                            // Set the thumbnail at the correct position
+                            decryptedMedia[globalIndex] = thumbnail
+                            photosAdapter?.notifyItemChanged(globalIndex)
+                        }
+                        
+                        loadedCount++
+                        
+                        // Update progress every few items or on the last item
+                        if (loadedCount % 5 == 0 || loadedCount == encryptedMedia.size) {
+                            runOnUiThread {
+                                galleryLoadingIndicator?.progress = loadedCount
+                                galleryLoadingText?.text = "Loading gallery ($loadedCount/${encryptedMedia.size})..."
+                                Log.v(TAG, "Thumbnail loading progress: $loadedCount/${encryptedMedia.size}")
+                            }
+                        }
+                        
+                    } else {
+                        android.util.Log.w("SecureGallery", "Thumbnail file not found for: ${mediaItem.name}")
                     }
-                    
-                    // Set the thumbnail at the correct position
-                    decryptedMedia[globalIndex] = thumbnail
-                    photosAdapter?.notifyItemChanged(globalIndex)
-                    
-                } else {
-                    android.util.Log.w("SecureGallery", "Thumbnail file not found for: ${mediaItem.name}")
+                } catch (e: Exception) {
+                    android.util.Log.e("SecureGallery", "Failed to load generated thumbnail for: ${mediaItem.name}", e)
                 }
-            } catch (e: Exception) {
-                android.util.Log.e("SecureGallery", "Failed to load generated thumbnail for: ${mediaItem.name}", e)
+            }
+            
+            // Hide progress bar after loading is complete
+            Log.d(TAG, "Thumbnail loading complete: $loadedCount/${encryptedMedia.size} thumbnails loaded")
+            runOnUiThread {
+                val loadingContainer = findViewById<android.widget.LinearLayout>(R.id.loadingContainer)
+                loadingContainer?.visibility = android.view.View.GONE
+                galleryLoadingIndicator?.visibility = android.view.View.GONE
+                galleryLoadingText?.visibility = android.view.View.GONE
+                Log.d(TAG, "Loading UI hidden after thumbnail loading complete")
             }
         }
-        
     }
 
     private fun enterDeleteMode() {
@@ -1416,15 +1470,21 @@ class GalleryActivity : AppCompatActivity() {
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
         
-        // Clear thumbnail caches to prevent corruption after app minimize
-        Log.d("SecureGallery", "Clearing thumbnail caches on resume to prevent corruption")
-        ThumbnailGenerator.clearCache(this)
+        // Only clear thumbnail caches if we detect corruption or are returning from media viewer
+        if (isMediaViewerActive) {
+            Log.d("SecureGallery", "Clearing thumbnail caches after media viewer to prevent corruption")
+            ThumbnailGenerator.clearCache(this)
+            // Also clear the in-memory cache
+            thumbnailCache.clear()
+        }
         
-        // Only refresh if we're returning from photo picker or if media viewer was NOT active
+        // Only refresh if we're returning from photo picker or if media viewer was active
         // This prevents duplicate thumbnails when returning from photo viewer
-        if (isPhotoPickerActive || !isMediaViewerActive) {
+        if (isPhotoPickerActive || isMediaViewerActive) {
             refreshGalleryData()
         } else {
+            // Check for thumbnail corruption without full refresh
+            checkAndFixThumbnailCorruption()
         }
         
         // Reset flags
@@ -1488,6 +1548,58 @@ class GalleryActivity : AppCompatActivity() {
             android.util.Log.d("SecureGallery", "Gallery refresh completed")
         } else {
             android.util.Log.d("SecureGallery", "No gallery refresh needed - Media: $actualMediaCount, Thumbnails: $currentThumbnailCount")
+        }
+    }
+    
+    // Check for thumbnail corruption and fix it without full refresh
+    private fun checkAndFixThumbnailCorruption() {
+        val galleryName = intent.getStringExtra("gallery_name") ?: return
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return
+        val currentPin = TempPinHolder.pin ?: ""
+        val key = CryptoUtils.deriveKey(currentPin, gallery.salt)
+        
+        thumbnailExecutor.execute {
+            var corruptedCount = 0
+            val media = gallery.media
+            
+            // Check each thumbnail for corruption
+            media.forEachIndexed { index, mediaItem ->
+                try {
+                    val thumbnailPath = ThumbnailGenerator.getThumbnailPath(this@GalleryActivity, galleryName, mediaItem.id.toString())
+                    if (File(thumbnailPath).exists()) {
+                        // Try to load the thumbnail - if it fails, it's corrupted
+                        val thumbnail = ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key)
+                        if (thumbnail == null) {
+                            Log.w(TAG, "Detected corrupted thumbnail for ${mediaItem.name}")
+                            corruptedCount++
+                            // Clear just this item from cache
+                            val cacheKey = "${mediaItem.id}_${mediaItem.mediaType}"
+                            thumbnailCache.remove(cacheKey)
+                            
+                            // Refresh just this item in the adapter
+                            runOnUiThread {
+                                photosAdapter?.notifyItemChanged(index)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Thumbnail corruption check failed for ${mediaItem.name}", e)
+                    corruptedCount++
+                    // Clear this item from cache
+                    val cacheKey = "${mediaItem.id}_${mediaItem.mediaType}"
+                    thumbnailCache.remove(cacheKey)
+                    
+                    runOnUiThread {
+                        photosAdapter?.notifyItemChanged(index)
+                    }
+                }
+            }
+            
+            if (corruptedCount > 0) {
+                Log.d(TAG, "Fixed $corruptedCount corrupted thumbnails")
+            } else {
+                Log.v(TAG, "No thumbnail corruption detected")
+            }
         }
     }
     
