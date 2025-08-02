@@ -248,31 +248,14 @@ class GalleryActivity : AppCompatActivity() {
             return
         }
         
-        // Show loading dialog for media import
-        val progressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
-            max = uris.size
-            progress = 0
+        // Show the proper progress bar for thumbnails instead of a separate dialog
+        Log.d(TAG, "🎯 Starting media import with proper progress bar - ${uris.size} files")
+        showProgressBarForThumbnails(uris.size)
+        
+        // Update the text to reflect that we're importing media
+        runOnUiThread {
+            galleryLoadingText?.text = "Importing and encrypting media..."
         }
-        
-        val progressText = android.widget.TextView(this).apply {
-            text = "Encrypting and processing media files..."
-            setPadding(0, 0, 0, 16)
-        }
-        
-        val layout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(50, 50, 50, 50)
-            addView(progressText)
-            addView(progressBar)
-        }
-        
-        val loadingDialog = android.app.AlertDialog.Builder(this)
-            .setTitle("Importing Media")
-            .setView(layout)
-            .setCancelable(false)
-            .create()
-        
-        loadingDialog.show()
         
         val encryptedMedia = mutableListOf<SecureMedia>()
         val deletableUris = mutableListOf<android.net.Uri>()
@@ -284,10 +267,11 @@ class GalleryActivity : AppCompatActivity() {
             
             for (uri in uris) {
                 try {
-                    // Update loading dialog on UI thread
+                    // Update progress bar on UI thread using the proper gallery progress bar
                     runOnUiThread {
-                        progressBar.progress = processedCount
-                        progressText.text = "Processing media ${processedCount + 1} of ${uris.size}..."
+                        galleryLoadingIndicator?.progress = processedCount
+                        galleryLoadingText?.text = "Processing media ${processedCount + 1} of ${uris.size}..."
+                        Log.d(TAG, "📊 Progress updated: ${processedCount}/${uris.size}")
                     }
                     
                     // Determine media type based on MIME type
@@ -398,7 +382,8 @@ class GalleryActivity : AppCompatActivity() {
             
             // Continue processing on UI thread
             runOnUiThread {
-                loadingDialog.dismiss()
+                Log.d(TAG, "✅ Media import completed - hiding progress bar")
+                hideProgressBar()
                 finishMediaImport(encryptedMedia, deletableUris, originalUris, gallery, key)
             }
         }.start()
@@ -843,6 +828,7 @@ class GalleryActivity : AppCompatActivity() {
     
     // Show progress bar for thumbnail generation process
     private fun showProgressBarForThumbnails(mediaCount: Int) {
+        progressBarShowTime = System.currentTimeMillis() // Track when progress bar was shown
         runOnUiThread {
             try {
                 val loadingContainer = findViewById<LinearLayout>(R.id.loadingContainer)
@@ -1509,20 +1495,22 @@ class GalleryActivity : AppCompatActivity() {
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
         
-        // Only clear thumbnail caches if we detect corruption or are returning from media viewer
+        // DO NOT clear thumbnail caches when returning from media viewer
+        // This was causing unnecessary thumbnail regeneration
+        // Only clear if we have actual corruption detected
         if (isMediaViewerActive) {
-            Log.d("SecureGallery", "Clearing thumbnail caches after media viewer to prevent corruption")
-            ThumbnailGenerator.clearCache(this)
-            // Also clear the in-memory cache
-            thumbnailCache.clear()
+            Log.d("SecureGallery", "Returned from media viewer - checking for corruption without clearing cache")
+            // Just check for corruption without clearing cache
+            checkAndFixThumbnailCorruption()
         }
         
-        // Only refresh if we're returning from photo picker or if media viewer was active
-        // This prevents duplicate thumbnails when returning from photo viewer
-        if (isPhotoPickerActive || isMediaViewerActive) {
+        // Only refresh if we're returning from photo picker (new media added)
+        // Skip refresh when returning from media viewer to prevent thumbnail regeneration
+        if (isPhotoPickerActive) {
+            Log.d("SecureGallery", "Returned from photo picker - refreshing for new media")
             refreshGalleryData()
-        } else {
-            // Check for thumbnail corruption without full refresh
+        } else if (!isMediaViewerActive) {
+            // Check for thumbnail corruption without full refresh only if NOT returning from viewer
             checkAndFixThumbnailCorruption()
         }
         

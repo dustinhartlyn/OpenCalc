@@ -104,10 +104,14 @@ class SecureMediaPagerAdapter(
                     holder.videoView.suspend() // Suspend to free resources
                     Log.d("SecureMediaPagerAdapter", "Stopped VideoView playback")
                 }
-                // Reset UI state
+                // Reset UI state and ensure surfaces are hidden
                 holder.loadingContainer.visibility = View.GONE
                 holder.videoView.visibility = View.GONE
                 holder.surfaceView.visibility = View.GONE
+                
+                // Force surface cleanup to prevent black screen artifacts
+                holder.surfaceView.holder.removeCallback(holder.surfaceView.holder.surfaceCallback)
+                Log.d("SecureMediaPagerAdapter", "Surface view completely hidden and callback removed")
             } catch (e: Exception) {
                 Log.w("SecureMediaPagerAdapter", "Error stopping videos", e)
             }
@@ -362,23 +366,10 @@ class SecureMediaPagerAdapter(
             // Clear previous image to prevent displaying wrong content
             holder.cleanup()
             
-            // Ensure PhotoView is visible and other views are hidden for photo display
+            // Ensure PhotoView is visible - DO NOT try to find video views in PhotoViewHolder
+            // The layout files are different, so searching for video views will cause issues
             holder.photoView.visibility = View.VISIBLE
-            // Make sure we're not in a mixed holder scenario - hide any video views that might exist
-            try {
-                // These might not exist in PhotoViewHolder but safer to try
-                val videoView = holder.itemView.findViewById<VideoView>(R.id.videoView)
-                val surfaceView = holder.itemView.findViewById<SurfaceView>(R.id.surfaceView)
-                val loadingContainer = holder.itemView.findViewById<View>(R.id.loadingContainer)
-                
-                videoView?.visibility = View.GONE
-                surfaceView?.visibility = View.GONE
-                loadingContainer?.visibility = View.GONE
-            } catch (e: Exception) {
-                // Expected for PhotoViewHolders that don't have video views
-                Log.d("SecureMediaPagerAdapter", "Photo holder doesn't have video views (expected)")
-            }
-            Log.d("SecureMediaPagerAdapter", "Made PhotoView visible and ensured video views are hidden")
+            Log.d("SecureMediaPagerAdapter", "Made PhotoView visible for photo display")
             
             // Validate media data before proceeding (without loading entire file into memory)
             if (!media.hasValidEncryptedData()) {
@@ -587,15 +578,13 @@ class SecureMediaPagerAdapter(
             Log.d("SecureMediaPagerAdapter", "Cleaning up existing video state")
             holder.cleanup()
             
-            // Ensure proper view state - hide any photo views that might exist
-            try {
-                val photoView = holder.itemView.findViewById<com.github.chrisbanes.photoview.PhotoView>(R.id.photoView)
-                photoView?.visibility = View.GONE
-                Log.d("SecureMediaPagerAdapter", "Hidden PhotoView for video display")
-            } catch (e: Exception) {
-                // Expected for VideoViewHolders that don't have photo views
-                Log.d("SecureMediaPagerAdapter", "Video holder doesn't have photo views (expected)")
-            }
+            // Ensure proper view state - DO NOT try to find photo views in VideoViewHolder
+            // The layout files are different, so searching for photo views will cause issues
+            // Just ensure video views are properly configured
+            holder.videoView.visibility = View.GONE  // Start hidden, will show after setup
+            holder.surfaceView.visibility = View.GONE  // Start hidden, will show when needed
+            holder.loadingContainer.visibility = View.VISIBLE  // Show loading initially
+            Log.d("SecureMediaPagerAdapter", "Set initial video view states")
             
             // Validate media data before proceeding (without loading entire file into memory)
             if (!media.hasValidEncryptedData()) {
@@ -1055,6 +1044,14 @@ class SecureMediaPagerAdapter(
             loadingContainer.visibility = View.GONE
             videoView.visibility = View.GONE
             surfaceView.visibility = View.GONE
+            
+            // Clear surface view callback to prevent black screen artifacts
+            try {
+                surfaceView.holder.removeCallback(surfaceView.holder.surfaceCallback)
+                Log.d("SecureMediaPagerAdapter", "Surface callback removed during cleanup")
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Error removing surface callback", e)
+            }
             
             Log.d("SecureMediaPagerAdapter", "VideoViewHolder cleanup completed")
         }
