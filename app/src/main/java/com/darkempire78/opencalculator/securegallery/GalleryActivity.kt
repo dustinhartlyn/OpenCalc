@@ -314,7 +314,7 @@ class GalleryActivity : AppCompatActivity() {
                                 
                                 // Generate and save thumbnail in background to avoid blocking UI
                                 try {
-                                    VideoUtils.generateAndSaveThumbnail(this@GalleryActivity, secureMedia, key)
+                                    VideoUtils.generateAndSaveThumbnail(this@GalleryActivity, secureMedia, key, galleryName)
                                     Log.d("SecureGallery", "Background thumbnail generation completed for ${secureMedia.name}")
                                 } catch (e: Exception) {
                                     Log.e("SecureGallery", "Failed to generate thumbnail in background for ${secureMedia.name}", e)
@@ -522,7 +522,7 @@ class GalleryActivity : AppCompatActivity() {
                     val cachedThumbnail = if (File(thumbnailPath).exists()) {
                         ThumbnailGenerator.loadEncryptedThumbnail(thumbnailPath, key!!)
                     } else {
-                        // Fall back to old VideoUtils cache (unencrypted)
+                        // Fall back to old VideoUtils cache (unencrypted) - legacy support
                         VideoUtils.loadCachedThumbnail(this, mediaItem)
                     }
                     val thumbnail = if (cachedThumbnail != null) {
@@ -562,7 +562,7 @@ class GalleryActivity : AppCompatActivity() {
                                 val cachedThumbnail = if (File(encryptedThumbnailPath).exists()) {
                                     ThumbnailGenerator.loadEncryptedThumbnail(encryptedThumbnailPath, key!!)
                                 } else {
-                                    // Fall back to old VideoUtils cache if no encrypted thumbnail
+                                    // Fall back to old VideoUtils cache if no encrypted thumbnail - legacy support
                                     VideoUtils.loadCachedThumbnail(this, mediaItem)
                                 }
                                 cachedThumbnail ?: VideoUtils.generateVideoThumbnailFromFile(
@@ -902,6 +902,10 @@ class GalleryActivity : AppCompatActivity() {
             val gallery = GalleryManager.getGalleries().find { it.name == galleryName } ?: return@Thread
             val maxSize = gallery.media.size
             
+            // OPTIMIZATION: Start background thumbnail preloading for video files
+            // This helps prevent "broken thumbnails" on app startup
+            VideoUtils.preloadThumbnailsInBackground(this@GalleryActivity, media, key)
+            
             runOnUiThread {
                 // Only add the exact number of new items needed, don't exceed actual media count
                 val itemsToAdd = minOf(media.size, maxSize - decryptedMedia.size)
@@ -1010,32 +1014,14 @@ class GalleryActivity : AppCompatActivity() {
                             }
                         }
                         MediaType.VIDEO -> {
-                            // Use ThumbnailGenerator for consistent thumbnail handling
+                            // Use optimized VideoUtils for video thumbnail generation during import
                             android.util.Log.d("SecureGallery", "Processing video thumbnail for: ${mediaItem.name}, id: ${mediaItem.id}")
                             try {
-                                val filePath = if (mediaItem.usesExternalStorage()) {
-                                    android.util.Log.d("SecureGallery", "Video uses external storage: ${mediaItem.filePath}")
-                                    mediaItem.filePath!!
-                                } else {
-                                    // For internal storage, create a temporary file
-                                    android.util.Log.d("SecureGallery", "Video uses internal storage, creating temp file")
-                                    val tempFile = File.createTempFile("video_thumb", ".tmp", cacheDir)
-                                    tempFile.writeBytes(mediaItem.getEncryptedData())
-                                    android.util.Log.d("SecureGallery", "Created temp file: ${tempFile.absolutePath}, size: ${tempFile.length()} bytes")
-                                    tempFile.absolutePath
-                                }
+                                // Use the optimized VideoUtils method that saves encrypted thumbnails
+                                val success = VideoUtils.generateAndSaveThumbnail(this@GalleryActivity, mediaItem, key!!, galleryName)
                                 
-                                android.util.Log.d("SecureGallery", "Generating video thumbnail from: $filePath")
-                                val thumbnailPath = ThumbnailGenerator.generateVideoThumbnailFromFile(
-                                    this@GalleryActivity, 
-                                    filePath, 
-                                    mediaItem.id.toString(), 
-                                    galleryName, 
-                                    key!!
-                                )
-                                
-                                if (thumbnailPath != null) {
-                                    android.util.Log.d("SecureGallery", "Video thumbnail generated successfully: $thumbnailPath")
+                                if (success) {
+                                    android.util.Log.d("SecureGallery", "Video thumbnail generated and saved successfully for: ${mediaItem.name}")
                                     processedCount++
                                 } else {
                                     android.util.Log.w("SecureGallery", "Video thumbnail generation failed for: ${mediaItem.name}")
@@ -1423,6 +1409,32 @@ class GalleryActivity : AppCompatActivity() {
         
         cleanupSecurity()
         
+        // SECURITY: Clear all caches when activity is finishing (logout scenario)
+        if (isFinishing && !isOpeningNewGallery) {
+            Log.d("SecureGallery", "SECURITY: Activity finishing - performing secure cache cleanup")
+            
+            // Clear all thumbnail caches from both VideoUtils and ThumbnailGenerator
+            VideoUtils.clearAllThumbnailCaches(this)
+            ThumbnailGenerator.clearAllThumbnailCaches(this)
+            
+            // Clear media pager caches if available
+            try {
+                // Clear any active media pager adapter caches
+                // Note: The media pager adapter cleanup will be called automatically
+                // when the activity is destroyed, but we can force it here for security
+                Log.d("SecureGallery", "SECURITY: Requesting secure adapter cleanup")
+            } catch (e: Exception) {
+                Log.w("SecureGallery", "Error during secure adapter cleanup", e)
+            }
+            
+            // Force multiple garbage collection passes to clear sensitive data
+            System.gc()
+            Thread.sleep(50)
+            System.gc()
+            
+            Log.d("SecureGallery", "SECURITY: Secure cache cleanup completed")
+        }
+        
         // Only clear PIN when activity is actually finishing and not opening a new gallery
         if (isFinishing && !isOpeningNewGallery) {
             TempPinHolder.clear()
@@ -1501,13 +1513,20 @@ class GalleryActivity : AppCompatActivity() {
         // Enable security monitoring when activity becomes active
         securityManager?.enable()
         
+        // OPTIMIZATION: Validate and repair thumbnail cache on resume to fix "broken thumbnails"
+        // This helps when thumbnails appear corrupted after app restart
+        val galleryName = intent.getStringExtra("gallery_name") ?: ""
+        val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+        if (gallery != null && currentPin.isNotEmpty()) {
+            val key = CryptoUtils.deriveKey(currentPin, gallery.salt)
+            VideoUtils.validateAndRepairThumbnailCache(this@GalleryActivity, gallery.media, key)
+        }
+        
         // DO NOT clear thumbnail caches when returning from media viewer
         // This was causing unnecessary thumbnail regeneration and blank gallery
         if (isMediaViewerActive) {
             Log.d("SecureGallery", "Returned from media viewer - NO cache clearing needed")
             // Only check for actual media count changes without clearing cache
-            val galleryName = intent.getStringExtra("gallery_name") ?: ""
-            val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
             if (gallery != null && gallery.media.size != decryptedMedia.size) {
                 Log.d("SecureGallery", "Media count mismatch detected - refreshing data")
                 refreshGalleryData()

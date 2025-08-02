@@ -954,6 +954,87 @@ class SecureMediaPagerAdapter(
         }
     }
     
+    /**
+     * SECURITY: Clear all caches on logout to prevent data interception
+     * This ensures no decrypted thumbnail or media data persists after logout
+     */
+    fun secureLogoutCleanup() {
+        Log.d("SecureMediaPagerAdapter", "SECURITY: Starting secure logout cleanup")
+        
+        // Stop all media playback immediately
+        pauseAllVideos()
+        
+        // Clear all in-memory photo caches (these contain decrypted data)
+        synchronized(photoPreloadCache) {
+            photoPreloadCache.values.forEach { bitmap ->
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                    Log.d("SecureMediaPagerAdapter", "SECURITY: Recycled cached bitmap")
+                }
+            }
+            photoPreloadCache.clear()
+            Log.d("SecureMediaPagerAdapter", "SECURITY: Cleared photo preload cache")
+        }
+        
+        // Securely clean up all temporary video files (these contain decrypted video data)
+        for (file in tempFiles.toList()) {
+            try {
+                if (file.exists()) {
+                    // Security: Overwrite file content with random data before deletion
+                    val fileSize = file.length()
+                    if (fileSize > 0) {
+                        val randomData = ByteArray(minOf(fileSize.toInt(), 10 * 1024 * 1024)) // Max 10MB overwrite
+                        java.security.SecureRandom().nextBytes(randomData)
+                        file.writeBytes(randomData)
+                        Log.d("SecureMediaPagerAdapter", "SECURITY: Overwrote temp file with random data: ${file.name}")
+                    }
+                    file.delete()
+                    Log.d("SecureMediaPagerAdapter", "SECURITY: Securely deleted temp file: ${file.name}")
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Failed to securely delete temp file: ${file.name}", e)
+                // Try regular deletion as fallback
+                try { file.delete() } catch (e2: Exception) { /* Ignore */ }
+            }
+        }
+        tempFiles.clear()
+        
+        // Securely clean up video preload cache (these contain decrypted video data)
+        for (file in preloadCache.values.toList()) {
+            try {
+                if (file.exists()) {
+                    // Security: Overwrite file content with random data before deletion
+                    val fileSize = file.length()
+                    if (fileSize > 0) {
+                        val randomData = ByteArray(minOf(fileSize.toInt(), 10 * 1024 * 1024)) // Max 10MB overwrite
+                        java.security.SecureRandom().nextBytes(randomData)
+                        file.writeBytes(randomData)
+                        Log.d("SecureMediaPagerAdapter", "SECURITY: Overwrote preload file with random data: ${file.name}")
+                    }
+                    file.delete()
+                    Log.d("SecureMediaPagerAdapter", "SECURITY: Securely deleted preload file: ${file.name}")
+                }
+            } catch (e: Exception) {
+                Log.w("SecureMediaPagerAdapter", "Failed to securely delete preload file: ${file.name}", e)
+                try { file.delete() } catch (e2: Exception) { /* Ignore */ }
+            }
+        }
+        preloadCache.clear()
+        
+        // Clear decrypted data tracker
+        decryptedDataTracker.clear()
+        
+        // Clear thumbnail cache on disk using VideoUtils (this affects all video thumbnails)
+        VideoUtils.clearAllThumbnailCaches(context)
+        
+        // Multiple garbage collection passes to ensure sensitive data is cleared from memory
+        System.gc()
+        Thread.sleep(100)
+        System.gc()
+        
+        Log.d("SecureMediaPagerAdapter", "SECURITY: Secure logout cleanup completed")
+    }
+    
     fun cleanup() {
         Log.d("SecureMediaPagerAdapter", "Starting secure cleanup - tracking ${decryptedDataTracker.size} decrypted data items")
         
