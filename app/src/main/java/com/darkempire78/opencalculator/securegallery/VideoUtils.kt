@@ -160,34 +160,6 @@ object VideoUtils {
         return null
     }
 
-    /**
-     * Load cached thumbnail for a video with gallery name (ENCRYPTED + LEGACY FALLBACK)
-     * Tries encrypted thumbnail first, falls back to old unencrypted cache for backwards compatibility
-     */
-    fun loadCachedThumbnail(context: Context, secureMedia: SecureMedia, galleryName: String, key: javax.crypto.spec.SecretKeySpec): Bitmap? {
-        try {
-            // First try encrypted thumbnail system (preferred)
-            val encryptedThumbnail = ThumbnailGenerator.loadEncryptedThumbnail(context, galleryName, secureMedia.id.toString(), key)
-            if (encryptedThumbnail != null) {
-                Log.d("VideoUtils", "ENCRYPTED: Successfully loaded encrypted thumbnail for ${secureMedia.name}")
-                return encryptedThumbnail
-            }
-            
-            // Fall back to legacy unencrypted cache
-            val legacyThumbnail = loadCachedThumbnail(context, secureMedia)
-            if (legacyThumbnail != null) {
-                Log.d("VideoUtils", "LEGACY: Found legacy thumbnail for ${secureMedia.name}, migrating to encrypted")
-                // Migrate to encrypted system and clean up legacy file
-                saveEncryptedThumbnail(context, secureMedia, legacyThumbnail, key, galleryName)
-                getThumbnailFile(context, secureMedia).delete()
-                return legacyThumbnail
-            }
-            
-        } catch (e: Exception) {
-            Log.e("VideoUtils", "Failed to load thumbnail for ${secureMedia.name}", e)
-        }
-        return null
-    }
 
     /**
      * Load cached thumbnail for a video (LEGACY - for backwards compatibility)
@@ -322,7 +294,7 @@ object VideoUtils {
                         
                         if (encryptedThumbnailExists) {
                             // Try to load the encrypted thumbnail to validate it
-                            val encryptedThumbnail = ThumbnailGenerator.loadEncryptedThumbnail(context, galleryName, media.id.toString(), key)
+                            val encryptedThumbnail = ThumbnailGenerator.loadEncryptedThumbnail(encryptedThumbnailPath, key)
                             if (encryptedThumbnail == null) {
                                 // Corrupted encrypted thumbnail, regenerate
                                 Log.d("VideoUtils", "CACHE_REPAIR: Repairing corrupted encrypted thumbnail for ${media.name}")
