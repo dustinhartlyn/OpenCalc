@@ -16,7 +16,6 @@ import android.widget.ProgressBar
 import android.widget.VideoView
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import com.darkempire78.opencalculator.R
 import com.github.chrisbanes.photoview.PhotoView
 import java.io.File
@@ -620,35 +619,9 @@ class SecureMediaPagerAdapter(
                         var tempFile = File.createTempFile("secure_video_", ".mp4", context.cacheDir)
                         tempFiles.add(tempFile)
                         
-                        // Use SecureVideoManager for optimized streaming if available
-                        val secureVideoManager = try {
-                            SecureVideoManager.getInstance(context)
-                        } catch (e: Exception) {
-                            Log.w("SecureMediaPagerAdapter", "SecureVideoManager not available, using fallback approach", e)
-                            null
-                        }
-                        
-                        if (secureVideoManager != null) {
-                            // Use optimized quick preparation
-                            runBlocking {
-                                val quickFile = secureVideoManager.prepareVideoQuickly(
-                                    File(media.filePath ?: ""), 
-                                    key.encoded.toString(Charsets.UTF_8)
-                                )
-                                
-                                if (quickFile != null && quickFile.exists()) {
-                                    Log.d("SecureMediaPagerAdapter", "Quick video preparation succeeded for: ${media.name}, file size: ${quickFile.length()}")
-                                    tempFile = quickFile
-                                } else {
-                                    Log.w("SecureMediaPagerAdapter", "Quick video preparation failed, using fallback for: ${media.name}")
-                                    // Fallback to standard decryption
-                                    performStandardVideoDecryption(media, tempFile, key)
-                                }
-                            }
-                        } else {
-                            // Fallback to standard decryption
-                            performStandardVideoDecryption(media, tempFile, key)
-                        }
+                        // Use standard decryption for now - optimization can be added later
+                        Log.d("SecureMediaPagerAdapter", "Using standard video decryption for: ${media.name}")
+                        performStandardVideoDecryption(media, tempFile, key)
                         
                         // Validate the decrypted video file
                         if (!tempFile.exists() || tempFile.length() < 1024) {
