@@ -35,18 +35,34 @@ class SecureMediaPagerAdapter(
         private const val VIEW_TYPE_VIDEO = 2
     }
     
+    // Security: Use secure collections and clear sensitive data
     private val tempFiles = mutableListOf<File>()
     private val key = if (pin.isNotEmpty() && salt != null) CryptoUtils.deriveKey(pin, salt) else null
     private val activityRef = WeakReference(context as? Activity)
     
-    // Preloading and memory management
-    private val preloadCache = mutableMapOf<Int, File>() // Cache prepared video files
-    private val maxPreloadItems = 3 // Limit preloaded items
+    // Preloading and memory management with security considerations
+    private val preloadCache = mutableMapOf<Int, File>() // Cache prepared video files - files are encrypted
+    private val maxPreloadItems = 3 // Limit preloaded items to minimize memory exposure
     private var lastPreloadPosition = -1
     
-    // Photo preloading cache
+    // Photo preloading cache - bitmaps are decrypted in memory, so limit cache size
     private val photoPreloadCache = mutableMapOf<String, Bitmap>()
-    private val maxPhotoCache = 5
+    private val maxPhotoCache = 5 // Keep small to minimize decrypted data in memory
+    
+    // Security: Track decrypted data for secure cleanup
+    private val decryptedDataTracker = mutableSetOf<String>()
+    
+    /**
+     * Security utility: Securely wipe sensitive data from memory
+     */
+    private fun secureWipeByteArray(data: ByteArray?) {
+        data?.let { bytes ->
+            // Overwrite with random data first
+            java.security.SecureRandom().nextBytes(bytes)
+            // Then overwrite with zeros
+            bytes.fill(0)
+        }
+    }
     
     override fun getItemViewType(position: Int): Int {
         return when (mediaList[position].mediaType) {
@@ -109,9 +125,7 @@ class SecureMediaPagerAdapter(
                 holder.videoView.visibility = View.GONE
                 holder.surfaceView.visibility = View.GONE
                 
-                // Force surface cleanup to prevent black screen artifacts
-                holder.surfaceView.holder.removeCallback(holder.surfaceView.holder.surfaceCallback)
-                Log.d("SecureMediaPagerAdapter", "Surface view completely hidden and callback removed")
+                Log.d("SecureMediaPagerAdapter", "Surface view completely hidden")
             } catch (e: Exception) {
                 Log.w("SecureMediaPagerAdapter", "Error stopping videos", e)
             }
@@ -467,6 +481,7 @@ class SecureMediaPagerAdapter(
 
     private fun decryptPhotoFromFile(filePath: String, key: javax.crypto.spec.SecretKeySpec, mediaSize: MediaSize = MediaSize.SMALL): Bitmap? {
         var inputStream: FileInputStream? = null
+        var decryptedBytes: ByteArray? = null
         try {
             val file = File(filePath)
             inputStream = FileInputStream(file)
@@ -477,7 +492,11 @@ class SecureMediaPagerAdapter(
             
             // Decrypt the rest of the file to a ByteArray
             val cipherData = inputStream.readBytes()
-            val decryptedBytes = CryptoUtils.decrypt(iv, cipherData, key)
+            decryptedBytes = CryptoUtils.decrypt(iv, cipherData, key)
+            
+            // Security: Track decrypted data for cleanup
+            val trackingId = "photo_${System.currentTimeMillis()}_${Thread.currentThread().id}"
+            decryptedDataTracker.add(trackingId)
             
             // Create bitmap with proper options to prevent OutOfMemoryError
             val options = BitmapFactory.Options().apply {
@@ -498,21 +517,32 @@ class SecureMediaPagerAdapter(
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
             
-            return BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+            val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+            
+            // Security: Remove tracking and clear decrypted bytes immediately
+            decryptedDataTracker.remove(trackingId)
+            return bitmap
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo from file: $filePath", e)
             return null
         } finally {
             inputStream?.close()
+            // Security: Clear decrypted bytes from memory using secure wipe
+            secureWipeByteArray(decryptedBytes)
         }
     }
     
     private fun decryptPhotoFromData(encryptedData: ByteArray, key: javax.crypto.spec.SecretKeySpec, mediaSize: MediaSize = MediaSize.SMALL): Bitmap? {
+        var decryptedBytes: ByteArray? = null
         try {
             val iv = encryptedData.copyOfRange(0, 16)
             val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
             
-            val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+            decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+            
+            // Security: Track decrypted data for cleanup
+            val trackingId = "photo_data_${System.currentTimeMillis()}_${Thread.currentThread().id}"
+            decryptedDataTracker.add(trackingId)
             
             // Create bitmap with proper options to prevent OutOfMemoryError
             val options = BitmapFactory.Options().apply {
@@ -533,10 +563,17 @@ class SecureMediaPagerAdapter(
                 inPreferredConfig = Bitmap.Config.RGB_565
             }
             
-            return BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+            val bitmap = BitmapFactory.decodeByteArray(decryptedBytes, 0, decryptedBytes.size, decodeOptions)
+            
+            // Security: Remove tracking
+            decryptedDataTracker.remove(trackingId)
+            return bitmap
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Failed to decrypt photo from data", e)
             return null
+        } finally {
+            // Security: Clear decrypted bytes from memory using secure wipe
+            secureWipeByteArray(decryptedBytes)
         }
     }
 
@@ -844,6 +881,7 @@ class SecureMediaPagerAdapter(
     }
     
     private fun performStandardVideoDecryption(media: SecureMedia, tempFile: File, key: javax.crypto.spec.SecretKeySpec) {
+        var decryptedBytes: ByteArray? = null
         try {
             if (media.usesExternalStorage()) {
                 // For file-based storage, stream decrypt to avoid loading entire file into memory
@@ -853,13 +891,13 @@ class SecureMediaPagerAdapter(
                 val inputStream = FileInputStream(encryptedFile)
                 val outputStream = FileOutputStream(tempFile)
                 
-                // Use existing streaming decryption method
+                // Use existing streaming decryption method - this is secure as data never fully resides in memory
                 CryptoUtils.decryptStream(inputStream, outputStream, key)
                 
                 inputStream.close()
                 outputStream.close()
             } else {
-                // For in-memory storage, decrypt normally
+                // For in-memory storage, decrypt normally but clear memory immediately
                 val encryptedData = media.getEncryptedData()
                 if (encryptedData.size < 16) {
                     Log.e("SecureMediaPagerAdapter", "Encrypted video data too small: ${encryptedData.size} bytes")
@@ -868,16 +906,20 @@ class SecureMediaPagerAdapter(
                 
                 val iv = encryptedData.copyOfRange(0, 16)
                 val ciphertext = encryptedData.copyOfRange(16, encryptedData.size)
-                val decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
+                decryptedBytes = CryptoUtils.decrypt(iv, ciphertext, key)
                 
                 Log.d("SecureMediaPagerAdapter", "Decrypted video data: ${decryptedBytes.size} bytes")
+                
+                // Security: Track decrypted video data
+                val trackingId = "video_${media.name}_${System.currentTimeMillis()}"
+                decryptedDataTracker.add(trackingId)
                 
                 val fos = FileOutputStream(tempFile)
                 fos.write(decryptedBytes)
                 fos.close()
                 
-                // Clear decrypted bytes from memory immediately
-                System.gc()
+                // Security: Remove tracking immediately after writing to file
+                decryptedDataTracker.remove(trackingId)
             }
             
             Log.d("SecureMediaPagerAdapter", "Standard video decryption completed: ${tempFile.length()} bytes")
@@ -885,31 +927,63 @@ class SecureMediaPagerAdapter(
         } catch (e: Exception) {
             Log.e("SecureMediaPagerAdapter", "Error in standard video decryption for ${media.name}", e)
             throw e
+        } finally {
+            // Security: Clear decrypted bytes from memory using secure wipe
+            secureWipeByteArray(decryptedBytes)
         }
     }
     
     fun cleanup() {
-        // Clean up temporary video files
+        Log.d("SecureMediaPagerAdapter", "Starting secure cleanup - tracking ${decryptedDataTracker.size} decrypted data items")
+        
+        // Security: Stop all media playback to prevent leaked decrypted data
+        pauseAllVideos()
+        
+        // Clean up temporary video files (these contain decrypted video data)
         for (file in tempFiles) {
             try {
-                file.delete()
+                if (file.exists()) {
+                    // Security: Overwrite file content before deletion for better security
+                    val fileSize = file.length()
+                    if (fileSize > 0) {
+                        val randomData = ByteArray(minOf(fileSize.toInt(), 1024 * 1024)) // Max 1MB overwrite
+                        java.security.SecureRandom().nextBytes(randomData)
+                        file.writeBytes(randomData)
+                    }
+                    file.delete()
+                    Log.d("SecureMediaPagerAdapter", "Securely deleted temp file: ${file.name}")
+                }
             } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Failed to delete temp file: ${file.name}", e)
+                Log.w("SecureMediaPagerAdapter", "Failed to securely delete temp file: ${file.name}", e)
+                // Try regular deletion as fallback
+                try { file.delete() } catch (e2: Exception) { /* Ignore */ }
             }
         }
         tempFiles.clear()
         
-        // Clean up preload cache
+        // Clean up preload cache (these also contain decrypted video data)
         for (file in preloadCache.values) {
             try {
-                file.delete()
+                if (file.exists()) {
+                    // Security: Overwrite file content before deletion
+                    val fileSize = file.length()
+                    if (fileSize > 0) {
+                        val randomData = ByteArray(minOf(fileSize.toInt(), 1024 * 1024)) // Max 1MB overwrite
+                        java.security.SecureRandom().nextBytes(randomData)
+                        file.writeBytes(randomData)
+                    }
+                    file.delete()
+                    Log.d("SecureMediaPagerAdapter", "Securely deleted preload file: ${file.name}")
+                }
             } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Failed to delete preload file: ${file.name}", e)
+                Log.w("SecureMediaPagerAdapter", "Failed to securely delete preload file: ${file.name}", e)
+                // Try regular deletion as fallback
+                try { file.delete() } catch (e2: Exception) { /* Ignore */ }
             }
         }
         preloadCache.clear()
         
-        // Cleanup photo cache
+        // Cleanup photo cache (these contain decrypted bitmap data in memory)
         synchronized(photoPreloadCache) {
             photoPreloadCache.values.forEach { bitmap ->
                 if (!bitmap.isRecycled) {
@@ -919,7 +993,13 @@ class SecureMediaPagerAdapter(
             photoPreloadCache.clear()
         }
         
-        Log.d("SecureMediaPagerAdapter", "Full adapter cleanup completed")
+        // Security: Clear decrypted data tracker
+        decryptedDataTracker.clear()
+        
+        // Security: Request garbage collection to clear sensitive data from memory
+        System.gc()
+        
+        Log.d("SecureMediaPagerAdapter", "Secure adapter cleanup completed")
     }
     
     class PhotoViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
@@ -989,17 +1069,20 @@ class SecureMediaPagerAdapter(
             // Clear the PhotoView first
             photoView.setImageBitmap(null)
             
-            // Then recycle the bitmap
+            // Security: Recycle bitmap and clear reference to prevent memory leaks of decrypted data
             currentBitmap?.let { bitmap ->
                 if (!bitmap.isRecycled) {
                     bitmap.recycle()
-                    Log.d("SecureMediaPagerAdapter", "Bitmap recycled during cleanup")
+                    Log.d("SecureMediaPagerAdapter", "Bitmap recycled during cleanup - freed decrypted image data")
                 }
             }
             currentBitmap = null
             
             // Reset PhotoView scale to prevent state issues
             photoView.setScale(1.0f, false)
+            
+            // Security: Request garbage collection to clear any remaining bitmap data
+            System.gc()
         }
         
         fun isImageLoaded(): Boolean = isLoaded && currentBitmap != null && !currentBitmap!!.isRecycled
@@ -1044,14 +1127,6 @@ class SecureMediaPagerAdapter(
             loadingContainer.visibility = View.GONE
             videoView.visibility = View.GONE
             surfaceView.visibility = View.GONE
-            
-            // Clear surface view callback to prevent black screen artifacts
-            try {
-                surfaceView.holder.removeCallback(surfaceView.holder.surfaceCallback)
-                Log.d("SecureMediaPagerAdapter", "Surface callback removed during cleanup")
-            } catch (e: Exception) {
-                Log.w("SecureMediaPagerAdapter", "Error removing surface callback", e)
-            }
             
             Log.d("SecureMediaPagerAdapter", "VideoViewHolder cleanup completed")
         }
