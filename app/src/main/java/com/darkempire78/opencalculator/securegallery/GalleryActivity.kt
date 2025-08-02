@@ -382,8 +382,11 @@ class GalleryActivity : AppCompatActivity() {
             
             // Continue processing on UI thread
             runOnUiThread {
-                Log.d(TAG, "✅ Media import completed - hiding progress bar")
-                hideProgressBar()
+                Log.d(TAG, "✅ Media import completed - starting thumbnail generation")
+                // Don't hide progress bar yet - keep it visible for thumbnail generation
+                galleryLoadingText?.text = "Generating thumbnails..."
+                galleryLoadingIndicator?.progress = 0
+                galleryLoadingIndicator?.max = encryptedMedia.size
                 finishMediaImport(encryptedMedia, deletableUris, originalUris, gallery, key)
             }
         }.start()
@@ -1048,8 +1051,9 @@ class GalleryActivity : AppCompatActivity() {
                     
                     // Update UI with progress
                     runOnUiThread {
-                        // Show progress to user
-                        val progress = "${processedCount}/${encryptedMedia.size} thumbnails processed"
+                        galleryLoadingIndicator?.progress = processedCount
+                        galleryLoadingText?.text = "Generating thumbnails... (${processedCount}/${encryptedMedia.size})"
+                        Log.d(TAG, "📸 Thumbnail generation progress: ${processedCount}/${encryptedMedia.size}")
                     }
                     
                     // Force garbage collection and add delay between items to prevent memory buildup
@@ -1067,6 +1071,8 @@ class GalleryActivity : AppCompatActivity() {
             
             // After thumbnail generation is complete, load them on UI thread
             runOnUiThread {
+                Log.d(TAG, "🎉 Thumbnail generation completed - hiding progress bar")
+                hideProgressBar()
                 loadGeneratedThumbnails(encryptedMedia, galleryName, key)
                 
                 // Only prompt to delete originals if we have deletable URIs
@@ -1496,22 +1502,24 @@ class GalleryActivity : AppCompatActivity() {
         securityManager?.enable()
         
         // DO NOT clear thumbnail caches when returning from media viewer
-        // This was causing unnecessary thumbnail regeneration
-        // Only clear if we have actual corruption detected
+        // This was causing unnecessary thumbnail regeneration and blank gallery
         if (isMediaViewerActive) {
-            Log.d("SecureGallery", "Returned from media viewer - checking for corruption without clearing cache")
-            // Just check for corruption without clearing cache
-            checkAndFixThumbnailCorruption()
+            Log.d("SecureGallery", "Returned from media viewer - NO cache clearing needed")
+            // Only check for actual media count changes without clearing cache
+            val galleryName = intent.getStringExtra("gallery_name") ?: ""
+            val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
+            if (gallery != null && gallery.media.size != decryptedMedia.size) {
+                Log.d("SecureGallery", "Media count mismatch detected - refreshing data")
+                refreshGalleryData()
+            } else {
+                Log.d("SecureGallery", "No refresh needed - media count matches")
+            }
         }
         
         // Only refresh if we're returning from photo picker (new media added)
-        // Skip refresh when returning from media viewer to prevent thumbnail regeneration
         if (isPhotoPickerActive) {
             Log.d("SecureGallery", "Returned from photo picker - refreshing for new media")
             refreshGalleryData()
-        } else if (!isMediaViewerActive) {
-            // Check for thumbnail corruption without full refresh only if NOT returning from viewer
-            checkAndFixThumbnailCorruption()
         }
         
         // Reset flags

@@ -107,6 +107,8 @@ class SecureMediaPagerAdapter(
     fun pauseAllVideos() {
         currentVideoHolder?.let { holder ->
             try {
+                Log.d("SecureMediaPagerAdapter", "Pausing all videos - ensuring complete cleanup")
+                
                 holder.mediaPlayer?.let { mp ->
                     if (mp.isPlaying) {
                         mp.stop() // Use stop instead of pause for complete cleanup
@@ -125,7 +127,10 @@ class SecureMediaPagerAdapter(
                 holder.videoView.visibility = View.GONE
                 holder.surfaceView.visibility = View.GONE
                 
-                Log.d("SecureMediaPagerAdapter", "Surface view completely hidden")
+                // Force layout update to ensure changes take effect
+                holder.itemView.requestLayout()
+                
+                Log.d("SecureMediaPagerAdapter", "Video views completely hidden and layout updated")
             } catch (e: Exception) {
                 Log.w("SecureMediaPagerAdapter", "Error stopping videos", e)
             }
@@ -133,6 +138,7 @@ class SecureMediaPagerAdapter(
         
         // Clear current video holder to prevent further operations
         currentVideoHolder = null
+        Log.d("SecureMediaPagerAdapter", "All video cleanup completed")
     }
     
     // Handle page changes to ensure videos play correctly during swiping
@@ -371,10 +377,14 @@ class SecureMediaPagerAdapter(
         Log.d("SecureMediaPagerAdapter", "Loading photo: ${media.name}")
         
         try {
-            // Stop any playing videos when switching to photo
+            // CRITICAL: Stop any playing videos when switching to photo
             if (currentVideoHolder != null) {
+                Log.d("SecureMediaPagerAdapter", "Stopping current video before loading photo")
                 pauseAllVideos()
-                Log.d("SecureMediaPagerAdapter", "Stopped videos when switching to photo")
+                // Add a small delay to ensure video is fully stopped
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    Log.d("SecureMediaPagerAdapter", "Video stopped - now loading photo")
+                }, 50)
             }
             
             // Clear previous image to prevent displaying wrong content
@@ -383,6 +393,7 @@ class SecureMediaPagerAdapter(
             // Ensure PhotoView is visible - DO NOT try to find video views in PhotoViewHolder
             // The layout files are different, so searching for video views will cause issues
             holder.photoView.visibility = View.VISIBLE
+            holder.photoView.alpha = 1.0f // Ensure full opacity
             Log.d("SecureMediaPagerAdapter", "Made PhotoView visible for photo display")
             
             // Validate media data before proceeding (without loading entire file into memory)
@@ -432,18 +443,28 @@ class SecureMediaPagerAdapter(
                         
                         // Update UI on main thread
                         activityRef.get()?.runOnUiThread {
-                            if (bitmap != null && !bitmap.isRecycled) {
-                                Log.d("SecureMediaPagerAdapter", "Successfully loaded bitmap for photo: ${media.name}, size: ${bitmap.width}x${bitmap.height}")
-                                holder.setImageBitmap(bitmap)
-                                
-                                // Cache the bitmap for future use
-                                synchronized(photoPreloadCache) {
-                                    if (photoPreloadCache.size < maxPhotoCache) {
-                                        photoPreloadCache[cacheKey] = bitmap
+                            try {
+                                if (bitmap != null && !bitmap.isRecycled) {
+                                    Log.d("SecureMediaPagerAdapter", "Successfully loaded bitmap for photo: ${media.name}, size: ${bitmap.width}x${bitmap.height}")
+                                    
+                                    // Ensure the PhotoView is visible before setting bitmap
+                                    holder.photoView.visibility = View.VISIBLE
+                                    holder.photoView.alpha = 1.0f
+                                    
+                                    holder.setImageBitmap(bitmap)
+                                    
+                                    // Cache the bitmap for future use
+                                    synchronized(photoPreloadCache) {
+                                        if (photoPreloadCache.size < maxPhotoCache) {
+                                            photoPreloadCache[cacheKey] = bitmap
+                                        }
                                     }
+                                } else {
+                                    Log.e("SecureMediaPagerAdapter", "Failed to decode bitmap for photo: ${media.name}")
+                                    setErrorImage(holder)
                                 }
-                            } else {
-                                Log.e("SecureMediaPagerAdapter", "Failed to decode bitmap for photo: ${media.name}")
+                            } catch (e: Exception) {
+                                Log.e("SecureMediaPagerAdapter", "Error setting bitmap on UI thread", e)
                                 setErrorImage(holder)
                             }
                         }
@@ -1053,12 +1074,21 @@ class SecureMediaPagerAdapter(
             isLoaded = bitmap != null
             
             if (bitmap != null && !bitmap.isRecycled) {
-                photoView.setImageBitmap(bitmap)
+                // Ensure PhotoView is properly configured before setting bitmap
                 photoView.visibility = View.VISIBLE
+                photoView.alpha = 1.0f
+                photoView.setImageBitmap(bitmap)
+                
+                // Force a layout to ensure bitmap is displayed
+                photoView.requestLayout()
+                photoView.invalidate()
+                
                 Log.d("SecureMediaPagerAdapter", "Image bitmap set successfully and made visible")
             } else {
                 Log.w("SecureMediaPagerAdapter", "Cannot set null or recycled bitmap")
                 photoView.setImageBitmap(null)
+                // Still keep PhotoView visible to show placeholder
+                photoView.visibility = View.VISIBLE
             }
         }
         
@@ -1068,6 +1098,10 @@ class SecureMediaPagerAdapter(
             
             // Clear the PhotoView first
             photoView.setImageBitmap(null)
+            
+            // Reset view state to prevent black screen issues
+            photoView.visibility = View.VISIBLE
+            photoView.alpha = 1.0f
             
             // Security: Recycle bitmap and clear reference to prevent memory leaks of decrypted data
             currentBitmap?.let { bitmap ->
