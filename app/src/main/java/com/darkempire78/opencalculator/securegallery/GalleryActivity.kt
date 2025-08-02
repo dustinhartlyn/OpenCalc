@@ -904,7 +904,7 @@ class GalleryActivity : AppCompatActivity() {
             
             // OPTIMIZATION: Start background thumbnail preloading for video files
             // This helps prevent "broken thumbnails" on app startup
-            VideoUtils.preloadThumbnailsInBackground(this@GalleryActivity, media, key)
+            VideoUtils.preloadThumbnailsInBackground(this@GalleryActivity, media, key, galleryName)
             
             runOnUiThread {
                 // Only add the exact number of new items needed, don't exceed actual media count
@@ -1519,7 +1519,7 @@ class GalleryActivity : AppCompatActivity() {
         val gallery = GalleryManager.getGalleries().find { it.name == galleryName }
         if (gallery != null && currentPin.isNotEmpty()) {
             val key = CryptoUtils.deriveKey(currentPin, gallery.salt)
-            VideoUtils.validateAndRepairThumbnailCache(this@GalleryActivity, gallery.media, key)
+            VideoUtils.validateAndRepairThumbnailCache(this@GalleryActivity, gallery.media, key, galleryName)
         }
         
         // DO NOT clear thumbnail caches when returning from media viewer
@@ -2094,7 +2094,7 @@ class GalleryActivity : AppCompatActivity() {
         
         // Clean up any old thumbnail caches on startup
         if (gallery != null && media.isNotEmpty() && key != null) {
-            VideoUtils.validateAndRepairThumbnailCache(this, media, key)
+            VideoUtils.validateAndRepairThumbnailCache(this, media, key, galleryName)
         }
         
         android.util.Log.d("SecureGallery", "GalleryActivity onCreate() completed successfully")

@@ -161,6 +161,35 @@ object VideoUtils {
     }
 
     /**
+     * Load cached thumbnail for a video with gallery name (ENCRYPTED + LEGACY FALLBACK)
+     * Tries encrypted thumbnail first, falls back to old unencrypted cache for backwards compatibility
+     */
+    fun loadCachedThumbnail(context: Context, secureMedia: SecureMedia, galleryName: String, key: javax.crypto.spec.SecretKeySpec): Bitmap? {
+        try {
+            // First try encrypted thumbnail system (preferred)
+            val encryptedThumbnail = ThumbnailGenerator.loadEncryptedThumbnail(context, galleryName, secureMedia.id.toString(), key)
+            if (encryptedThumbnail != null) {
+                Log.d("VideoUtils", "ENCRYPTED: Successfully loaded encrypted thumbnail for ${secureMedia.name}")
+                return encryptedThumbnail
+            }
+            
+            // Fall back to legacy unencrypted cache
+            val legacyThumbnail = loadCachedThumbnail(context, secureMedia)
+            if (legacyThumbnail != null) {
+                Log.d("VideoUtils", "LEGACY: Found legacy thumbnail for ${secureMedia.name}, migrating to encrypted")
+                // Migrate to encrypted system and clean up legacy file
+                saveEncryptedThumbnail(context, secureMedia, legacyThumbnail, key, galleryName)
+                getThumbnailFile(context, secureMedia).delete()
+                return legacyThumbnail
+            }
+            
+        } catch (e: Exception) {
+            Log.e("VideoUtils", "Failed to load thumbnail for ${secureMedia.name}", e)
+        }
+        return null
+    }
+
+    /**
      * Load cached thumbnail for a video (LEGACY - for backwards compatibility)
      * Tries encrypted thumbnail first, falls back to old unencrypted cache
      */
@@ -235,7 +264,7 @@ object VideoUtils {
      * OPTIMIZATION: Preload thumbnails for video media items in background
      * This helps avoid "broken thumbnail" appearance on app startup
      */
-    fun preloadThumbnailsInBackground(context: Context, mediaList: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+    fun preloadThumbnailsInBackground(context: Context, mediaList: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec, galleryName: String = "Default Gallery") {
         Thread {
             try {
                 Log.d("VideoUtils", "PRELOAD: Starting background thumbnail preloading for ${mediaList.size} media items")
@@ -245,10 +274,10 @@ object VideoUtils {
                 
                 for ((index, media) in videoItems.withIndex()) {
                     try {
-                        val existingThumbnail = loadCachedThumbnail(context, media)
+                        val existingThumbnail = loadCachedThumbnail(context, media, galleryName)
                         if (existingThumbnail == null) {
                             Log.d("VideoUtils", "PRELOAD: Generating missing thumbnail for ${media.name} (${index + 1}/${videoItems.size})")
-                            generateAndSaveThumbnail(context, media, key)
+                            generateAndSaveThumbnail(context, media, key, galleryName)
                         } else {
                             Log.d("VideoUtils", "PRELOAD: Thumbnail already cached for ${media.name} (${index + 1}/${videoItems.size})")
                         }
@@ -275,8 +304,9 @@ object VideoUtils {
     /**
      * OPTIMIZATION: Check and repair corrupted thumbnail cache
      * Useful for fixing "broken thumbnails" after app updates or crashes
+     * Now supports both encrypted and legacy thumbnail systems
      */
-    fun validateAndRepairThumbnailCache(context: Context, mediaList: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+    fun validateAndRepairThumbnailCache(context: Context, mediaList: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec, galleryName: String = "Default Gallery") {
         Thread {
             try {
                 Log.d("VideoUtils", "CACHE_REPAIR: Starting thumbnail cache validation")
@@ -286,23 +316,48 @@ object VideoUtils {
                 
                 for (media in videoItems) {
                     try {
-                        val thumbnailFile = getThumbnailFile(context, media)
+                        // First check for encrypted thumbnails (new system)
+                        val encryptedThumbnailPath = ThumbnailGenerator.getThumbnailPath(context, galleryName, media.id.toString())
+                        val encryptedThumbnailExists = File(encryptedThumbnailPath).exists()
                         
-                        if (thumbnailFile.exists()) {
-                            // Try to load the thumbnail to validate it
-                            val bitmap = BitmapFactory.decodeFile(thumbnailFile.absolutePath)
-                            if (bitmap == null) {
-                                // Corrupted thumbnail, regenerate
-                                Log.d("VideoUtils", "CACHE_REPAIR: Repairing corrupted thumbnail for ${media.name}")
-                                thumbnailFile.delete()
-                                generateAndSaveThumbnail(context, media, key)
+                        if (encryptedThumbnailExists) {
+                            // Try to load the encrypted thumbnail to validate it
+                            val encryptedThumbnail = ThumbnailGenerator.loadEncryptedThumbnail(context, galleryName, media.id.toString(), key)
+                            if (encryptedThumbnail == null) {
+                                // Corrupted encrypted thumbnail, regenerate
+                                Log.d("VideoUtils", "CACHE_REPAIR: Repairing corrupted encrypted thumbnail for ${media.name}")
+                                File(encryptedThumbnailPath).delete()
+                                generateAndSaveThumbnail(context, media, key, galleryName)
                                 repairedCount++
+                            } else {
+                                Log.d("VideoUtils", "CACHE_REPAIR: Encrypted thumbnail validated for ${media.name}")
                             }
                         } else {
-                            // Missing thumbnail, generate
-                            Log.d("VideoUtils", "CACHE_REPAIR: Generating missing thumbnail for ${media.name}")
-                            generateAndSaveThumbnail(context, media, key)
-                            repairedCount++
+                            // Check legacy thumbnail system
+                            val legacyThumbnailFile = getThumbnailFile(context, media)
+                            
+                            if (legacyThumbnailFile.exists()) {
+                                // Try to load the legacy thumbnail to validate it
+                                val bitmap = BitmapFactory.decodeFile(legacyThumbnailFile.absolutePath)
+                                if (bitmap == null) {
+                                    // Corrupted legacy thumbnail, regenerate as encrypted
+                                    Log.d("VideoUtils", "CACHE_REPAIR: Migrating corrupted legacy thumbnail to encrypted for ${media.name}")
+                                    legacyThumbnailFile.delete()
+                                    generateAndSaveThumbnail(context, media, key, galleryName)
+                                    repairedCount++
+                                } else {
+                                    // Migrate working legacy thumbnail to encrypted system
+                                    Log.d("VideoUtils", "CACHE_REPAIR: Migrating working legacy thumbnail to encrypted for ${media.name}")
+                                    saveEncryptedThumbnail(context, media, bitmap, key, galleryName)
+                                    legacyThumbnailFile.delete() // Clean up legacy file
+                                    repairedCount++
+                                }
+                            } else {
+                                // No thumbnail exists, generate new encrypted one
+                                Log.d("VideoUtils", "CACHE_REPAIR: Generating missing encrypted thumbnail for ${media.name}")
+                                generateAndSaveThumbnail(context, media, key, galleryName)
+                                repairedCount++
+                            }
                         }
                         
                     } catch (e: Exception) {
@@ -319,6 +374,14 @@ object VideoUtils {
             name = "VideoThumbnailCacheValidator"
             priority = Thread.MIN_PRIORITY
         }.start()
+    }
+    
+    /**
+     * LEGACY: Check and repair corrupted thumbnail cache (without gallery name)
+     * Maintains backwards compatibility but will gradually migrate to encrypted system
+     */
+    fun validateAndRepairThumbnailCache(context: Context, mediaList: List<SecureMedia>, key: javax.crypto.spec.SecretKeySpec) {
+        validateAndRepairThumbnailCache(context, mediaList, key, "Default Gallery")
     }
     
     /**
