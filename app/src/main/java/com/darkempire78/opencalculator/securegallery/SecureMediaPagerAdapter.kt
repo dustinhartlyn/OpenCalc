@@ -360,6 +360,10 @@ class SecureMediaPagerAdapter(
             // Clear previous image to prevent displaying wrong content
             holder.cleanup()
             
+            // Ensure PhotoView is visible for photo display
+            holder.photoView.visibility = View.VISIBLE
+            Log.d("SecureMediaPagerAdapter", "Made PhotoView visible for photo display")
+            
             // Validate media data before proceeding (without loading entire file into memory)
             if (!media.hasValidEncryptedData()) {
                 Log.e("SecureMediaPagerAdapter", "Invalid or missing encrypted data for photo: ${media.name}")
@@ -955,7 +959,8 @@ class SecureMediaPagerAdapter(
             
             if (bitmap != null && !bitmap.isRecycled) {
                 photoView.setImageBitmap(bitmap)
-                Log.d("SecureMediaPagerAdapter", "Image bitmap set successfully")
+                photoView.visibility = View.VISIBLE
+                Log.d("SecureMediaPagerAdapter", "Image bitmap set successfully and made visible")
             } else {
                 Log.w("SecureMediaPagerAdapter", "Cannot set null or recycled bitmap")
                 photoView.setImageBitmap(null)
@@ -1020,9 +1025,10 @@ class SecureMediaPagerAdapter(
                 Log.w("SecureMediaPagerAdapter", "Error cleaning up VideoView", e)
             }
             
-            // Reset UI state
+            // Reset UI state - hide all video views
             loadingContainer.visibility = View.GONE
             videoView.visibility = View.GONE
+            surfaceView.visibility = View.GONE
             
             Log.d("SecureMediaPagerAdapter", "VideoViewHolder cleanup completed")
         }

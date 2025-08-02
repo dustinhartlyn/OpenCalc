@@ -30,6 +30,7 @@ import java.util.Locale
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.os.Handler
 import android.os.Looper
 import java.util.concurrent.Executors
 import android.view.MenuItem
@@ -761,11 +762,15 @@ class GalleryActivity : AppCompatActivity() {
             // If most thumbnails exist, go directly to loading phase
             val thumbnailExistRatio = if (media.isNotEmpty()) initialThumbnailCount.toFloat() / media.size else 0f
             if (thumbnailExistRatio >= 0.8f) {
-                Log.d(TAG, "Most thumbnails already exist ($initialThumbnailCount/${media.size}), starting loading phase")
+                Log.d(TAG, "Most thumbnails already exist ($initialThumbnailCount/${media.size}), hiding progress bar")
                 runOnUiThread {
                     galleryLoadingText?.text = "Loading gallery..."
+                    // Hide progress bar after brief delay since thumbnails already exist
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        hideProgressBar()
+                        Log.d(TAG, "Progress bar hidden - thumbnails already existed")
+                    }, 1000)
                 }
-                // Let the loading process handle progress from here
                 thumbnailGenerationComplete = true
                 thumbnailGenerationCount = initialThumbnailCount
                 return@execute
@@ -806,9 +811,15 @@ class GalleryActivity : AppCompatActivity() {
                         Log.d(TAG, "Thumbnail generation monitoring complete: $currentThumbnailCount/${media.size} thumbnails")
                         
                         runOnUiThread {
-                            // Switch to loading phase instead of hiding immediately
+                            // Switch to loading phase briefly, then hide progress bar
                             galleryLoadingText?.text = "Loading gallery..."
                             Log.d(TAG, "Switching to loading phase after thumbnail generation")
+                            
+                            // Hide progress bar after a brief delay to indicate completion
+                            Handler(Looper.getMainLooper()).postDelayed({
+                                hideProgressBar()
+                                Log.d(TAG, "Progress bar hidden after thumbnail generation completion")
+                            }, 1000) // 1 second delay to show completion
                         }
                         break
                     }
